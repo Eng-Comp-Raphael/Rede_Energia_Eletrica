@@ -1,4 +1,11 @@
-public class App {
+/**
+ * @file App.java
+ * @author Raphael Batista 
+ * @date 2026
+ * @brief Testes simples
+ */
+
+public class App { // testes
     public static void main(String[] args) throws Exception {
         Grafo<String> grafo = new Grafo<String>();
         grafo.addVertice("A");

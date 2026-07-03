@@ -1,4 +1,10 @@
 package estruturaGrafo;
+/**
+ * @file Aresta.java
+ * @author Raphael Batista 
+ * @date 2026
+ * @brief Criação de arestas
+ */
 
 public class Aresta<TIPO extends Comparable<TIPO>> {
 

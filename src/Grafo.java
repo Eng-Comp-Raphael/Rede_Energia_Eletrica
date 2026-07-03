@@ -4,6 +4,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
 
+/**
+ * @file Grafo.java
+ * @author Raphael Batista 
+ * @date 2026
+ * @brief Criação e manipulação de arestas, vertices e arvores dos vertices
+ */
+
 public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == poste, filhos das Arvores == casas, arestas
                                                    // == conexoes eletricas
     private Map<TIPO, Vertice<TIPO>> vertice;

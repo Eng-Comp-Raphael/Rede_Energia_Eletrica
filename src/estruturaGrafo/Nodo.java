@@ -1,4 +1,11 @@
 package estruturaGrafo;
+/**
+ * @file Nodo.java
+ * @author Raphael Batista
+ * @date 2026
+ * @brief Ponteiros das arvores
+ */
+
 public class Nodo<TIPO> {
     private TIPO nome;
     private Nodo<TIPO> direita;
