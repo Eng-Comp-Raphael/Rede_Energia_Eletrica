@@ -24,6 +24,12 @@ public class App { // testes
         grafo.addAresta("A", "C", 5);
         grafo.addAresta("B", "C", 3);
         grafo.addAresta("C", "A", 10);
+
+        System.out.println("### Grafo Original ###");
         grafo.printGrafo();
+
+        System.out.println("\n### Árvore Geradora Mínima ###");
+        Grafo<String> agm = grafo.AGM(grafo);
+        agm.printGrafo();
     }
 }

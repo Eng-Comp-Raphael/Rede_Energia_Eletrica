@@ -1,12 +1,16 @@
 import estruturaGrafo.Vertice;
 import estruturaGrafo.Aresta;
+import estruturaGrafo.ConjuntoDisjunto;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 
 /**
  * @file Grafo.java
- * @author Raphael Batista 
+ * @author Raphael Batista
  * @date 2026
  * @brief Criação e manipulação de arestas, vertices e arvores dos vertices
  */
@@ -24,7 +28,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     // add verteces ao grafo (arvores binirias vazias)
     public void addVertice(TIPO vertice) {
         if (!this.vertice.containsKey(vertice)) {
-            Vertice<TIPO> novoVertece = new Vertice<TIPO>(vertice);
+            Vertice<TIPO> novoVertece = new Vertice<>(vertice);
             this.vertice.put(vertice, novoVertece);
         }
     }
@@ -37,6 +41,10 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
         } else {
             System.out.println("Erro: Vertice [" + idVertice + "] não existe no grafo");
         }
+    }
+
+    public void addVerticeExixtente(TIPO id, Vertice<TIPO> verticeExistente) {
+        this.vertice.put(id, verticeExistente);
     }
 
     // add arestas ao grafo
@@ -73,7 +81,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
             // System.out.println("Aresta " + (i + 1) + ": Liga árvore de raiz [" + raizU +
             // "] à árvore de raiz [" + raizV
             // + "] com peso (lambda) = " + edge.getLambda());
-            System.out.println((i + 1) + "[" + raizU + "] -> [" + raizV + "], " + edge.getLambda());
+            System.out.println((i + 1) + "[" + raizU + "] - [" + raizV + "], " + edge.getLambda());
         }
     }
 
@@ -81,5 +89,51 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     public void printGrafo() {
         printVertices();
         printArestas();
+    }
+
+    public Grafo<TIPO> AGM(Grafo<TIPO> grafoOriginal) { // Árvore Geradora Mínima
+
+        // Copia os vertices para a nova arvore geradora
+        Grafo<TIPO> agm = new Grafo<>();
+        for (TIPO id : grafoOriginal.vertice.keySet()) {
+            agm.addVerticeExixtente(id, grafoOriginal.vertice.get(id));
+        }
+        // Ordena as arestas do grafo original por peso (lambda) crescente
+        ArrayList<Aresta<TIPO>> arestasOrdenadas = new ArrayList<>(grafoOriginal.aresta);
+        Collections.sort(arestasOrdenadas, Comparator.comparingInt(Aresta::getLambda));
+
+        // Inicializa o conjunto disjunto, um conjunto por vertice
+        ConjuntoDisjunto<TIPO> conjunto = new ConjuntoDisjunto<>();
+        for (TIPO id : grafoOriginal.vertice.keySet()) {
+            conjunto.criarConjunto(id);
+        }
+
+        int totalVertices = grafoOriginal.vertice.size();
+        int arestasUsadas = 0;
+        int pesoTotal = 0;
+
+        // Percorre as arestas em ordem crescente de peso
+        for (Aresta<TIPO> aresta : arestasOrdenadas) {
+            if (arestasUsadas == totalVertices - 1) {
+                break; // arvore geradora ja completa
+            }
+            TIPO nomeU = aresta.getU().getNome();
+            TIPO nomeV = aresta.getV().getNome();
+
+            // se unir() retornar true, os vertices estavam em conjuntos diferentes -> nao
+            // forma ciclo -> pode entrar na AGM
+            if (conjunto.unir(nomeU, nomeV)) {
+                agm.addAresta(nomeU, nomeV, aresta.getLambda());
+                pesoTotal += aresta.getLambda();
+                arestasUsadas++;
+            }
+        }
+
+        if (arestasUsadas < totalVertices - 1) {
+            System.out.println("Aviso: O grafo nao e conexo, a AGM gerada e uma floresta geradora minima");
+        }
+        System.out.println("Peso total da AGM: " + pesoTotal);
+
+        return agm;
     }
 }
