@@ -1,7 +1,7 @@
 package estruturaGrafo;
 /**
  * @file Nodo.java
- * @author Raphael Batista
+ * @authors Raphael Batista ...
  * @date 2026
  * @brief Ponteiros das arvores
  */

@@ -1,14 +1,14 @@
 package estruturaGrafo;
 /**
- * @file Aresta.java
- * @author Raphael Batista 
+ * @file Vertice.java
+ * @authors Raphael Batista ...
  * @date 2026
  * @brief Todo vertice é a raiz de uma arvore binaria
  */
 public class Vertice<TIPO extends Comparable<TIPO>> extends Nodo<TIPO> { // arvores
 
     public Vertice(TIPO nome) { // o vertice é o proprio Nodo raiz da arvore
-        super(nome); 
+        super(nome);
     }
 
     private Nodo<TIPO> addRec(Nodo<TIPO> atual, TIPO nome) {

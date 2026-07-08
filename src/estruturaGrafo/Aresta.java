@@ -41,5 +41,15 @@ public class Aresta<TIPO extends Comparable<TIPO>> {
     public void setLambda(int lambda) {
         this.lambda = lambda;
     }
-    
+    // =======================
+    // dentro de estruturaGrafo/Aresta.java — adicione:
+private boolean ativo = true;
+
+public boolean getAtivo() {
+    return ativo;
+}
+
+public void setAtivo(boolean ativo) {
+    this.ativo = ativo;
+}
 }
