@@ -1,4 +1,5 @@
 package estruturaGrafo;
+
 import algoritmos.DFS;
 import algoritmos.BFS;
 import algoritmos.AreasAfetadas;
@@ -26,6 +27,8 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
 
     private Map<TIPO, Vertice<TIPO>> vertice;
     private ArrayList<Aresta<TIPO>> aresta;
+    private TIPO fontePrincipal = null; // primeiro vertice criado = subestacao/fonte da rede
+    private TIPO ultimoVerticeAdicionado = null; // usado para encadear a auto-conexao
 
     public Grafo() {
         this.vertice = new HashMap<>();
@@ -33,12 +36,74 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // add verteces ao grafo (arvores binirias vazias)
-    public void addVertice(TIPO vertice) {
-        if (!this.vertice.containsKey(vertice)) {
-            Vertice<TIPO> novoVertece = new Vertice<>(vertice);
-            this.vertice.put(vertice, novoVertece);
+    // add verteces ao grafo (arvores binirias vazias)
+// A PARTIR DO SEGUNDO VERTICE, cada novo poste ja nasce conectado ao
+// ultimo poste criado (peso padrao = 1), garantindo que a rede nunca
+// fique desconexa. O PRIMEIRO vertice criado vira a fonte principal
+// (subestacao raiz), usada como ponto de partida no recalculo de rotas.
+public void addVertice(TIPO vertice) {
+    addVertice(vertice, 1);
+}
+
+// mesma coisa, mas permitindo escolher o peso da conexao automatica
+// (ex: distancia real entre os dois postes no mapa)
+public void addVertice(TIPO vertice, int pesoConexaoAnterior) {
+    if (!this.vertice.containsKey(vertice)) {
+        Vertice<TIPO> novoVertece = new Vertice<>(vertice);
+        this.vertice.put(vertice, novoVertece);
+
+        if (fontePrincipal == null) {
+            fontePrincipal = vertice; // primeiro vertice = fonte da rede
+        } else {
+            addAresta(ultimoVerticeAdicionado, vertice, pesoConexaoAnterior);
         }
+        ultimoVerticeAdicionado = vertice;
     }
+}
+
+
+// Cria o vertice e, se "conectar" for true E ja existir um vertice anterior,
+// liga os dois automaticamente. O rastreio do "ultimo vertice criado" acontece
+// SEMPRE (mesmo com conectar=false), para que ligar o botao de volta depois
+// continue a cadeia a partir do vertice certo, e nao de um vertice antigo.
+public void addVerticeAutoConectado(TIPO vertice, int pesoConexaoAnterior, boolean conectar) {
+    if (this.vertice.containsKey(vertice)) {
+        return;
+    }
+    addVertice(vertice);
+
+    if (fontePrincipal == null) {
+        fontePrincipal = vertice;
+    } else if (conectar) {
+        addAresta(ultimoVerticeAdicionado, vertice, pesoConexaoAnterior);
+    }
+    ultimoVerticeAdicionado = vertice;
+}
+
+public void addVerticeAutoConectado(TIPO vertice, int pesoConexaoAnterior) {
+    addVerticeAutoConectado(vertice, pesoConexaoAnterior, true);
+}
+
+public void addVerticeAutoConectado(TIPO vertice) {
+    addVerticeAutoConectado(vertice, 1, true);
+}
+
+
+public TIPO getUltimoVerticeAdicionado() {
+    return ultimoVerticeAdicionado;
+}
+public void setUltimoVerticeAdicionado(TIPO id) {
+    this.ultimoVerticeAdicionado = id;
+    if (this.fontePrincipal == null) {
+        this.fontePrincipal = id; // cobre o caso raro de clicar num vertice
+                                   // carregado de arquivo, que nunca passou
+                                   // pelo addVerticeAutoConectado
+    }
+}
+
+public TIPO getFontePrincipal() {
+    return fontePrincipal;
+}
 
     // add dados na arvore presente no vertece
     public void addElementoVertice(TIPO idVertice, TIPO dadoArvore) {
@@ -55,17 +120,50 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // add arestas ao grafo
-    public void addAresta(TIPO idOrigem, TIPO idDestino, int lambda) {
-        Vertice<TIPO> u = this.vertice.get(idOrigem);
-        Vertice<TIPO> v = this.vertice.get(idDestino);
+   public void addAresta(TIPO idOrigem, TIPO idDestino, int lambda) {
+    Vertice<TIPO> u = this.vertice.get(idOrigem);
+    Vertice<TIPO> v = this.vertice.get(idDestino);
 
-        if (u != null && v != null) {
-            Aresta<TIPO> novAresta = new Aresta<>(u, v, lambda);
-            this.aresta.add(novAresta);
-        } else {
-            System.out.println("Erro: Um ou ambos os vértices não existem");
+    if (u == null || v == null) {
+        System.out.println("Erro: Um ou ambos os vértices não existem");
+        return;
+    }
+
+    // NOVO: impede registrar a mesma conexao fisica duas vezes -- um cabo
+    // duplicado nunca e' considerado "ponte" pelo algoritmo, mesmo quando
+    // na pratica e' so uma unica linha, o que mascara pontes de verdade
+    // em toda a cadeia de ancestrais na DFS
+    for (Aresta<TIPO> existente : this.aresta) {
+        boolean mesmoPar =
+                (existente.getU().getNome().equals(idOrigem) && existente.getV().getNome().equals(idDestino)) ||
+                (existente.getU().getNome().equals(idDestino) && existente.getV().getNome().equals(idOrigem));
+        if (mesmoPar) {
+            System.out.println("Aviso: já existe conexão entre [" + idOrigem + "] e [" + idDestino + "], duplicata ignorada.");
+            return;
         }
     }
+
+    this.aresta.add(new Aresta<>(u, v, lambda));
+}
+
+    public void printArestasDuplicadas() {
+    System.out.println("=== Verificando arestas duplicadas ===");
+    boolean achouAlguma = false;
+    for (int i = 0; i < aresta.size(); i++) {
+        for (int j = i + 1; j < aresta.size(); j++) {
+            Aresta<TIPO> a = aresta.get(i);
+            Aresta<TIPO> b = aresta.get(j);
+            boolean mesmoPar =
+                    (a.getU().getNome().equals(b.getU().getNome()) && a.getV().getNome().equals(b.getV().getNome())) ||
+                    (a.getU().getNome().equals(b.getV().getNome()) && a.getV().getNome().equals(b.getU().getNome()));
+            if (mesmoPar) {
+                achouAlguma = true;
+                System.out.println("DUPLICATA: [" + a.getU().getNome() + "] - [" + a.getV().getNome() + "]");
+            }
+        }
+    }
+    if (!achouAlguma) System.out.println("Nenhuma duplicata encontrada.");
+}
 
     // imprime verteces e as arvores
     public void printVertices() {
@@ -96,7 +194,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  ÁRVORE GERADORA MÍNIMA (delega para AlgoritmoAGM)
+    // ÁRVORE GERADORA MÍNIMA (delega para AlgoritmoAGM)
     // ============================================================
 
     public Grafo<TIPO> AGM(Grafo<TIPO> grafoOriginal) {
@@ -124,7 +222,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  POSTE (VÉRTICE) E CASA (NODO DA ÁRVORE): CONTROLE DE FALHAS
+    // POSTE (VÉRTICE) E CASA (NODO DA ÁRVORE): CONTROLE DE FALHAS
     // ============================================================
     // Regra de negócio: Vertice extends Nodo, logo o próprio poste já
     // possui o campo "ativo" herdado. Se o poste está inativo, TODAS as
@@ -133,28 +231,36 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     // liga/desliga de forma independente (falha local).
 
     // ============================================================
-    //  REMOÇÃO DE VÉRTICES E ARESTAS
+    // REMOÇÃO DE VÉRTICES E ARESTAS
     // ============================================================
 
     public void removerVertice(TIPO idVertice) {
-        // Verifica se o vértice realmente existe no grafo
-        if (!this.vertice.containsKey(idVertice)) {
-            System.out.println("Erro: Vértice [" + idVertice + "] não existe no grafo.");
-            return;
-        }
-
-        // 1. Remove o vértice do mapa principal
-        this.vertice.remove(idVertice);
-
-        // 2. Remove todas as arestas (cabos) que começam ou terminam neste vértice
-        // O método removeIf percorre a lista e apaga a aresta se a condição for verdadeira
-        this.aresta.removeIf(a -> 
-            a.getU().getNome().equals(idVertice) || 
-            a.getV().getNome().equals(idVertice)
-        );
-
-        System.out.println("Vértice [" + idVertice + "] e suas conexões foram removidos do backend.");
+    // Verifica se o vértice realmente existe no grafo
+    if (!this.vertice.containsKey(idVertice)) {
+        System.out.println("Erro: Vértice [" + idVertice + "] não existe no grafo.");
+        return;
     }
+
+    // 1. Remove o vértice do mapa principal
+    this.vertice.remove(idVertice);
+
+    // 2. Remove todas as arestas (cabos) que começam ou terminam neste vértice
+    this.aresta.removeIf(a -> 
+        a.getU().getNome().equals(idVertice) || 
+        a.getV().getNome().equals(idVertice)
+    );
+
+    // 3. NOVO: evita que a auto-conexao (addVerticeAutoConectado) aponte para
+    // um vertice que acabou de ser removido
+    if (idVertice.equals(fontePrincipal)) {
+        fontePrincipal = null;
+    }
+    if (idVertice.equals(ultimoVerticeAdicionado)) {
+        ultimoVerticeAdicionado = null;
+    }
+
+    System.out.println("Vértice [" + idVertice + "] e suas conexões foram removidos do backend.");
+}
 
     /** Marca o poste (vértice) como ativo/inativo (ex: subestação caiu). */
     public void setPosteAtivo(TIPO idPoste, boolean ativo) {
@@ -175,6 +281,43 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
         }
         return poste.getAtivo();
     }
+
+    // ============================================================
+//  CURTO-CIRCUITO: recalculo automatico de rotas
+// ============================================================
+
+/** Marca o poste como CURTO-CIRCUITO (inativo) e recalcula a rota da energia. */
+public void marcarCurtoCircuito(TIPO idPoste) {
+    Vertice<TIPO> poste = this.vertice.get(idPoste);
+    if (poste == null) {
+        System.out.println("Erro: Poste [" + idPoste + "] não existe no grafo");
+        return;
+    }
+    poste.setAtivo(false);
+    System.out.println("\n>>> CURTO-CIRCUITO detectado no poste [" + idPoste + "] <<<");
+    recalcularRotas();
+}
+
+/** Repara o poste (volta a ficar ativo) e recalcula a rota da energia. */
+public void repararCurtoCircuito(TIPO idPoste) {
+    Vertice<TIPO> poste = this.vertice.get(idPoste);
+    if (poste == null) {
+        System.out.println("Erro: Poste [" + idPoste + "] não existe no grafo");
+        return;
+    }
+    poste.setAtivo(true);
+    System.out.println("\n>>> Poste [" + idPoste + "] reparado, recalculando rotas <<<");
+    recalcularRotas();
+}
+
+/** Recalcula, a partir da fonte principal (primeiro vertice criado), quais postes ficam sem atendimento. */
+public void recalcularRotas() {
+    if (fontePrincipal == null) {
+        System.out.println("Nenhuma fonte principal definida ainda (nenhum vertice foi criado).");
+        return;
+    }
+    printAreasAfetadas(fontePrincipal);
+}
 
     /** Busca um Nodo (casa) dentro da árvore de um poste, por comparação BST. */
     private Nodo<TIPO> buscarNodo(Nodo<TIPO> atual, TIPO alvo) {
@@ -278,7 +421,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  BUSCA EM PROFUNDIDADE (delega para AlgoritmoDFS)
+    // BUSCA EM PROFUNDIDADE (delega para AlgoritmoDFS)
     // ============================================================
 
     public List<TIPO> dfs(TIPO inicio) {
@@ -291,7 +434,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  BUSCA EM LARGURA (delega para AlgoritmoBFS)
+    // BUSCA EM LARGURA (delega para AlgoritmoBFS)
     // ============================================================
 
     public List<TIPO> bfs(TIPO inicio) {
@@ -304,7 +447,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  ÁREAS AFETADAS (delega para AlgoritmoAreasAfetadas)
+    // ÁREAS AFETADAS (delega para AlgoritmoAreasAfetadas)
     // ============================================================
 
     public List<TIPO> identificarAreasAfetadas(TIPO fonte) {
@@ -322,7 +465,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  FLUXO MÁXIMO (delega para AlgoritmoFluxoMaximo)
+    // FLUXO MÁXIMO (delega para AlgoritmoFluxoMaximo)
     // ============================================================
 
     public int fluxoMaximo(TIPO origem, TIPO destino) {
@@ -336,7 +479,7 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // ============================================================
-    //  IDENTIFICAÇÃO DE PONTES (delega para AlgoritmoPontes)
+    // IDENTIFICAÇÃO DE PONTES (delega para AlgoritmoPontes)
     // ============================================================
 
     public List<Aresta<TIPO>> encontrarPontes() {
@@ -354,8 +497,9 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
             }
         }
     }
+
     // ============================================================
-    //  MÉTODOS DE ACESSO PARA A INTERFACE GRÁFICA
+    // MÉTODOS DE ACESSO PARA A INTERFACE GRÁFICA
     // ============================================================
     public List<Aresta<TIPO>> getArestas() {
         return this.aresta;

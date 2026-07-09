@@ -11,7 +11,7 @@ public class App { // testes
         // Inicia a janela visual
         visualizacao.VisualizadorRede janela = new visualizacao.VisualizadorRede();
         janela.setVisible(true);
-
+        
         // Opcional: Adicionar arestas programaticamente (os vértices você pode clicar
         // no mapa para criar)
         // janela.conectarPostes("Poste_1", "Poste_2");
