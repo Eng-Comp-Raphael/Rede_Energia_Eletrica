@@ -95,7 +95,7 @@ public class AreasAfetadas<TIPO extends Comparable<TIPO>> {
         for (Aresta<TIPO> a : aresta) {
             TIPO u = a.getU().getNome();
             TIPO v = a.getV().getNome();
-            if (adj.containsKey(u) && adj.containsKey(v)) {
+            if (a.getAtivo() && adj.containsKey(u) && adj.containsKey(v)) {
                 adj.get(u).add(v);
                 adj.get(v).add(u);
             }

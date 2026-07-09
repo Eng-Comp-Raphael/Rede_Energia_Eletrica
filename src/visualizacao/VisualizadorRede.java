@@ -37,7 +37,8 @@ public class VisualizadorRede extends JFrame {
     private PintorConexoes pintorConexoes;
     private Grafo<String> grafoRede;
     private boolean autoConectarAtivado = true; // controla se novos vertices se conectam automaticamente ao ultimo
-                                                // criado
+
+    // criado
 
     private enum Modo {
         NAVEGAR, CRIAR_VERTICE, LIGAR_VERTICES, REMOVER_VERTICE, ALTERNAR_FALHA
@@ -83,7 +84,8 @@ public class VisualizadorRede extends JFrame {
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
 
-        JButton btnArquivo = new JButton("📁 Arquivo ▼"); // NOVO BOTÃO ARQUIVO
+        JButton btnArquivo = new JButton("📁 Arquivo ▼");
+        JButton btnTestes = new JButton("🧪 Testes ▼");
         JToggleButton btnNavegar = new JToggleButton("🖐 Navegar", true);
         JToggleButton btnCriarVertice = new JToggleButton("📍 Add: Poste ▼");
         JToggleButton btnLigar = new JToggleButton("🔗 Ligar Vértices");
@@ -112,11 +114,44 @@ public class VisualizadorRede extends JFrame {
         JPopupMenu popupArquivo = new JPopupMenu();
         JMenuItem itemSalvar = new JMenuItem("💾 Salvar Rede...");
         JMenuItem itemCarregar = new JMenuItem("📂 Carregar Rede...");
+        JMenuItem itemLimparRede = new JMenuItem("❌ Limpar Tudo (Reset)");
+
         itemSalvar.addActionListener(e -> salvarRede());
         itemCarregar.addActionListener(e -> carregarRede());
+
+        // Configuração da ação do botão de limpeza manual
+        itemLimparRede.addActionListener(e -> {
+            grafoRede.limparGrafo();          // Limpa as estruturas do Grafo
+            pintorConexoes.limparTudo();      // Limpa os elementos visuais do mapa
+            recalcularEnergia();              // Recalcula o fluxo elétrico (zerando-o)
+            mapViewer.repaint();              // Atualiza a renderização da tela
+            JOptionPane.showMessageDialog(this, "O simulador foi reiniciado e toda a rede foi limpa com sucesso!");
+        });
+
         popupArquivo.add(itemSalvar);
         popupArquivo.add(itemCarregar);
+        popupArquivo.addSeparator();         
+        popupArquivo.add(itemLimparRede);
         btnArquivo.addActionListener(e -> popupArquivo.show(btnArquivo, 0, btnArquivo.getHeight()));
+
+        // Configurando o Popup Menu dos Testes
+        JPopupMenu popupTestes = new JPopupMenu();
+        JMenuItem itemTesteAuto = new JMenuItem("🤖 Rodar Cenário Automático (AmbienteTeste)");
+        JMenuItem itemTestePers = new JMenuItem("🛠️ Testar Rede Desenhada (Personalizado)");
+
+        // Instancia o novo Gerenciador
+        GerenciadorTestes gerenciadorTestes = new GerenciadorTestes(this);
+
+        itemTesteAuto.addActionListener(e -> gerenciadorTestes.iniciarTesteAutomatico());
+        itemTestePers.addActionListener(e -> gerenciadorTestes.executarTestePersonalizado());
+
+        popupTestes.add(itemTesteAuto);
+        popupTestes.add(itemTestePers);
+        btnTestes.addActionListener(e -> popupTestes.show(btnTestes, 0, btnTestes.getHeight()));
+
+        popupTestes.add(itemTesteAuto);
+        popupTestes.add(itemTestePers);
+        btnTestes.addActionListener(e -> popupTestes.show(btnTestes, 0, btnTestes.getHeight()));
 
         // Menu Adicionar Vértice
         JPopupMenu popupVertices = new JPopupMenu();
@@ -187,7 +222,8 @@ public class VisualizadorRede extends JFrame {
         });
 
         toolBar.add(btnArquivo);
-        toolBar.addSeparator(); // NOVO
+        toolBar.add(btnTestes);
+        toolBar.addSeparator();
         toolBar.add(btnNavegar);
         toolBar.addSeparator();
         toolBar.add(btnCriarVertice);
@@ -257,7 +293,7 @@ public class VisualizadorRede extends JFrame {
 
                     pintorConexoes.adicionarVertice(nome, geo, tipoVerticeSelecionado);
                     grafoRede.addVerticeAutoConectado(nome, pesoConexao, autoConectarAtivado);
-                    
+
                     if (verticeAnterior != null && autoConectarAtivado) {
                         pintorConexoes.adicionarAresta(verticeAnterior, nome, pesoConexao);
                     }
@@ -295,12 +331,15 @@ public class VisualizadorRede extends JFrame {
                         }
                         recalcularEnergia();
                     }
-                } else if (modoAtual == Modo.ALTERNAR_FALHA) {
+                }  else if (modoAtual == Modo.ALTERNAR_FALHA) {
                     String clicado = pintorConexoes.getVerticeProximo(pontoTela, mapViewer, 20);
                     if (clicado != null) {
                         boolean ativoAtual = grafoRede.posteAtivo(clicado);
                         grafoRede.setPosteAtivo(clicado, !ativoAtual);
                         recalcularEnergia();
+                        
+                        // >>> ADICIONE ESTA LINHA AQUI <<<
+                        gerenciadorTestes.registrarFalhaManualNoMapa(clicado, !ativoAtual);
                     }
                 }
             }
@@ -371,7 +410,7 @@ public class VisualizadorRede extends JFrame {
 
             try (BufferedReader br = new BufferedReader(new FileReader(arquivo))) {
                 // Zera o Grafo (Lógica) e o Pintor (Visual)
-                grafoRede = new Grafo<String>();
+                grafoRede.limparGrafo();
                 pintorConexoes.limparTudo();
 
                 String linha;
@@ -426,31 +465,17 @@ public class VisualizadorRede extends JFrame {
     // ==========================================
     // MOTOR DE DISTRIBUIÇÃO DE ENERGIA (Tempo Real)
     // ==========================================
-    private void recalcularEnergia() {
+    public void recalcularEnergia() {
         Set<String> ativas = new HashSet<>();
         Queue<String> fila = new LinkedList<>();
-
-        boolean temSubestacao = false; // 1. DECLARE A VARIÁVEL AQUI
+        // NOVO: Mapa para registrar a distância de cada nó até a subestação
+        Map<String, Integer> distancias = new HashMap<>(); 
 
         for (Map.Entry<String, PintorConexoes.VerticeVis> entry : pintorConexoes.getVertices().entrySet()) {
             if (entry.getValue().tipo == TipoVertice.SUBESTACAO && grafoRede.posteAtivo(entry.getKey())) {
                 ativas.add(entry.getKey());
                 fila.add(entry.getKey());
-                temSubestacao = true; // 2. ATUALIZE O STATUS AQUI
-            }
-        }
-
-        if (!temSubestacao) {
-            String primeiraFonte = null;
-            for (String v : pintorConexoes.getVertices().keySet()) {
-                if (grafoRede.posteAtivo(v)) {
-                    primeiraFonte = v;
-                    break;
-                }
-            }
-            if (primeiraFonte != null) {
-                ativas.add(primeiraFonte);
-                fila.add(primeiraFonte);
+                distancias.put(entry.getKey(), 0); // A distância da fonte de energia é 0
             }
         }
 
@@ -463,12 +488,17 @@ public class VisualizadorRede extends JFrame {
             adj.get(a.getV().getNome()).add(a.getU().getNome());
         }
 
+        // BFS - Distribuição de energia e cálculo de distâncias
         while (!fila.isEmpty()) {
             String atual = fila.poll();
+            int distAtual = distancias.get(atual); // Distância do nó atual
+
             for (String vizinho : adj.get(atual)) {
                 if (!ativas.contains(vizinho) && grafoRede.posteAtivo(vizinho)) {
                     ativas.add(vizinho);
                     fila.add(vizinho);
+                    // O vizinho recebe a distância do nó atual + 1
+                    distancias.put(vizinho, distAtual + 1); 
                 }
             }
         }
@@ -495,7 +525,8 @@ public class VisualizadorRede extends JFrame {
             }
         }
 
-        pintorConexoes.setEstadoEnergia(semEnergiaV, semEnergiaA, inativosManuais);
+        // NOVO: Passamos o mapa de distâncias como parâmetro
+        pintorConexoes.setEstadoEnergia(semEnergiaV, semEnergiaA, inativosManuais, distancias);
         mapViewer.repaint();
     }
 
@@ -598,5 +629,17 @@ public class VisualizadorRede extends JFrame {
         int fluxo = grafoRede.fluxoMaximo(origem, destino);
         JOptionPane.showMessageDialog(this, "A Capacidade Máxima de Distribuição entre " + origem + " e " + destino
                 + " é: " + fluxo + " unidades.");
+    }
+
+    public Grafo<String> getGrafoRede() {
+        return grafoRede;
+    }
+
+    public PintorConexoes getPintorConexoes() {
+        return pintorConexoes;
+    }
+
+    public JXMapViewer getMapViewer() {
+        return mapViewer;
     }
 }

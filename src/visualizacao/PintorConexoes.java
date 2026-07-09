@@ -30,7 +30,7 @@ public class PintorConexoes implements Painter<JXMapViewer> {
             this.tipo = tipo;
         }
     }
-
+    
     private Map<String, VerticeVis> vertices;
     private List<ConexaoVis> arestas;
     private double progressoAnimacao = 0.0;
@@ -44,6 +44,7 @@ public class PintorConexoes implements Painter<JXMapViewer> {
     private Set<String> verticesSemEnergia = new HashSet<>();
     private Set<String> arestasSemEnergia = new HashSet<>();
     private Set<String> verticesInativosManuais = new HashSet<>();
+    private Map<String, Integer> distanciasSubestacao = new HashMap<>();
 
     private Color corDestaque = Color.GREEN;
     private boolean mostrarApenasDestaques = false;
@@ -103,10 +104,12 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         verticesDestacados.add(nome);
     }
 
-    public void setEstadoEnergia(Set<String> semEnergiaV, Set<String> semEnergiaA, Set<String> inativos) {
+    // NOVO: Adicionado o parâmetro Map<String, Integer> distancias
+    public void setEstadoEnergia(Set<String> semEnergiaV, Set<String> semEnergiaA, Set<String> inativos, Map<String, Integer> distancias) {
         this.verticesSemEnergia = semEnergiaV;
         this.arestasSemEnergia = semEnergiaA;
         this.verticesInativosManuais = inativos;
+        this.distanciasSubestacao = distancias; // Salva as distâncias
     }
 
     public void setCorDestaque(Color cor) {
@@ -128,6 +131,7 @@ public class PintorConexoes implements Painter<JXMapViewer> {
     public void limparTudo() {
         vertices.clear();
         arestas.clear();
+        distanciasSubestacao.clear();
         limparDestaquesAlgoritmos();
         verticesSemEnergia.clear();
         arestasSemEnergia.clear();
@@ -254,8 +258,25 @@ private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float 
                     desenharRaioFalha(g, midX, midY, alpha, 0.8f);
                 }
             } else if (!isDestacada || corDestaque == Color.GREEN || corDestaque == Color.MAGENTA) {
-                int currentX = (int) (x1 + (x2 - x1) * progressoAnimacao);
-                int currentY = (int) (y1 + (y2 - y1) * progressoAnimacao);
+                // NOVO: Pega a distância calculada pela BFS (se não achar, assume que tá muito longe/sem energia)
+                int dOrigem = distanciasSubestacao.getOrDefault(aresta.origem, 9999);
+                int dDestino = distanciasSubestacao.getOrDefault(aresta.destino, 9999);
+
+                int startX = x1, startY = y1;
+                int endX = x2, endY = y2;
+                
+                // NOVO: Se a origem da aresta estiver MAIS LONGE da fonte de energia que o destino,
+                // significa que a energia está fluindo no sentido inverso (do destino para a origem).
+                // Invertemos os pontos para a animação seguir o sentido correto!
+                if (dOrigem > dDestino) {
+                    startX = x2;
+                    startY = y2;
+                    endX = x1;
+                    endY = y1;
+                }
+
+                int currentX = (int) (startX + (endX - startX) * progressoAnimacao);
+                int currentY = (int) (startY + (endY - startY) * progressoAnimacao);
                 g.setColor(Color.YELLOW);
                 g.fillOval(currentX - 6, currentY - 6, 12, 12);
             }

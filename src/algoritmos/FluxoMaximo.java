@@ -83,7 +83,7 @@ public class FluxoMaximo<TIPO extends Comparable<TIPO>> {
             TIPO u = a.getU().getNome();
             TIPO v = a.getV().getNome();
             int lambda = a.getLambda();
-            if (cap.containsKey(u) && cap.containsKey(v)) {
+            if (a.getAtivo() && cap.containsKey(u) && cap.containsKey(v)) {
                 cap.get(u).merge(v, lambda, Integer::sum);
                 cap.get(v).merge(u, lambda, Integer::sum);
             }
