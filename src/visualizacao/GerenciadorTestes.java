@@ -124,24 +124,27 @@ public class GerenciadorTestes {
         grafo.limparGrafo();
 
         if (etapaAtual >= 1) {
-            // Chamando a nova classe de modelo!
             ModeloTesteAutomatico.construirRedeBase(grafo, pintor, interfacePrincipal);
         }
 
         if (etapaAtual == 2) {
-            grafo.setPosteAtivo("Sub1", false);
+            // Derrubando AS DUAS subestações para simular falha total (raios vermelhos)
+            grafo.setPosteAtivo("Sub_Centro", false);
+            grafo.setPosteAtivo("Sub_Coplan", false);
             textoEtapa.setText("ETAPA 2: Queda da Subestação!\n\nA fonte primária parou. Todo o sistema deve estar com raios vermelhos e sem energia.");
         } else if (etapaAtual == 3) {
-            // ... (O resto dos if/elses da etapaAtual continuam idênticos ao que já estava)
-            grafo.setPosteAtivo("Sub1", true);
+            // Religando as subestações
+            grafo.setPosteAtivo("Sub_Centro", true);
+            grafo.setPosteAtivo("Sub_Coplan", true);
             textoEtapa.setText("ETAPA 3: Sistema Normalizado.\n\nA subestação foi religada e a energia voltou a fluir normalmente.");
         } else if (etapaAtual == 4) {
-            grafo.setPosteAtivo("P2", false);
+            // Interrompendo um nó crítico da nova rede
+            grafo.setPosteAtivo("P_Vargas1", false);
             
-            String outputCaminho = capturarSaidaConsole(() -> grafo.printCaminhoAlternativo("Sub1", "P3"));
+            String outputCaminho = capturarSaidaConsole(() -> grafo.printCaminhoAlternativo("Sub_Centro", "Casa_Primavera"));
             String outputPrioridades = capturarSaidaConsole(() -> grafo.printPontosPrioritarios());
             
-            textoEtapa.setText("ETAPA 4: Conexão interrompida no setor P2.\nA energia encontrou o caminho alternativo.\n\n"
+            textoEtapa.setText("ETAPA 4: Conexão interrompida no setor P_Vargas1.\nA energia encontrou o caminho alternativo.\n\n"
                     + "=== RELATÓRIO DO SISTEMA ===\n\n" 
                     + outputCaminho + "\n" + outputPrioridades);
             textoEtapa.setCaretPosition(0);
@@ -318,7 +321,7 @@ public class GerenciadorTestes {
     // ==========================================
 
     private void posicionarJanela(JDialog janela) {
-        Dimension tamanhoTela = Toolkit.getDefaultToolkit().getScreenSize();
+        //Dimension tamanhoTela = Toolkit.getDefaultToolkit().getScreenSize();
         Point loc = interfacePrincipal.getLocationOnScreen();
         
         int x = loc.x + 20;
@@ -327,7 +330,7 @@ public class GerenciadorTestes {
         janela.setLocation(x, y);
     }
     
-    private void adicionarNoSimulado(String nome, double lat, double lon, TipoVertice tipo) {
+    /*private void adicionarNoSimulado(String nome, double lat, double lon, TipoVertice tipo) {
         pintor.adicionarVertice(nome, new GeoPosition(lat, lon), tipo);
         grafo.addVertice(nome);
     }
@@ -335,7 +338,7 @@ public class GerenciadorTestes {
     private void ligarNoSimulado(String u, String v, int peso) {
         pintor.adicionarAresta(u, v, peso);
         grafo.addAresta(u, v, peso);
-    }
+    }*/
 
     private String solicitarVertice(String mensagem) {
         Object[] chaves = pintor.getVertices().keySet().toArray();

@@ -38,47 +38,33 @@ public class Grafo<TIPO extends Comparable<TIPO>> {// verteces == arvore == post
     }
 
     // add verteces ao grafo (arvores binirias vazias)
-    // add verteces ao grafo (arvores binirias vazias)
-    // A PARTIR DO SEGUNDO VERTICE, cada novo poste ja nasce conectado ao
-    // ultimo poste criado (peso padrao = 1), garantindo que a rede nunca
-    // fique desconexa. O PRIMEIRO vertice criado vira a fonte principal
-    // (subestacao raiz), usada como ponto de partida no recalculo de rotas.
+    // Adiciona o vértice sem criar nenhuma aresta indesejada (Usado no Load e Modelos)
     public void addVertice(TIPO vertice) {
-        addVertice(vertice, 1);
-    }
-
-    // mesma coisa, mas permitindo escolher o peso da conexao automatica
-    // (ex: distancia real entre os dois postes no mapa)
-    public void addVertice(TIPO vertice, int pesoConexaoAnterior) {
         if (!this.vertice.containsKey(vertice)) {
             Vertice<TIPO> novoVertece = new Vertice<>(vertice);
             this.vertice.put(vertice, novoVertece);
 
             if (fontePrincipal == null) {
                 fontePrincipal = vertice; // primeiro vertice = fonte da rede
-            } else {
-                addAresta(ultimoVerticeAdicionado, vertice, pesoConexaoAnterior);
             }
             ultimoVerticeAdicionado = vertice;
         }
     }
 
-    // Cria o vertice e, se "conectar" for true E ja existir um vertice anterior,
-    // liga os dois automaticamente. O rastreio do "ultimo vertice criado" acontece
-    // SEMPRE (mesmo com conectar=false), para que ligar o botao de volta depois
-    // continue a cadeia a partir do vertice certo, e nao de um vertice antigo.
+    // Cria o vértice e o conecta automaticamente ao anterior (Usado pelos cliques no UI)
     public void addVerticeAutoConectado(TIPO vertice, int pesoConexaoAnterior, boolean conectar) {
         if (this.vertice.containsKey(vertice)) {
             return;
         }
+        
+        TIPO anterior = ultimoVerticeAdicionado;
+        
+        // Adiciona de forma pura, sem forçar arestas fantasmas
         addVertice(vertice);
 
-        if (fontePrincipal == null) {
-            fontePrincipal = vertice;
-        } else if (conectar) {
-            addAresta(ultimoVerticeAdicionado, vertice, pesoConexaoAnterior);
+        if (conectar && anterior != null) {
+            addAresta(anterior, vertice, pesoConexaoAnterior);
         }
-        ultimoVerticeAdicionado = vertice;
     }
 
     public void addVerticeAutoConectado(TIPO vertice, int pesoConexaoAnterior) {

@@ -104,12 +104,11 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         verticesDestacados.add(nome);
     }
 
-    // NOVO: Adicionado o parâmetro Map<String, Integer> distancias
     public void setEstadoEnergia(Set<String> semEnergiaV, Set<String> semEnergiaA, Set<String> inativos, Map<String, Integer> distancias) {
         this.verticesSemEnergia = semEnergiaV;
         this.arestasSemEnergia = semEnergiaA;
         this.verticesInativosManuais = inativos;
-        this.distanciasSubestacao = distancias; // Salva as distâncias
+        this.distanciasSubestacao = distancias; 
     }
 
     public void setCorDestaque(Color cor) {
@@ -127,7 +126,6 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         mostrarApenasDestaques = false;
     }
 
-    // NOVO: Método para zerar o mapa ao carregar um arquivo salvo
     public void limparTudo() {
         vertices.clear();
         arestas.clear();
@@ -157,26 +155,25 @@ public class PintorConexoes implements Painter<JXMapViewer> {
             progressoAnimacao = 0.0;
     }
 
-    /** Desenha um pequeno raio vermelho pulsante (indicador de curto-circuito/falha). */
-private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float escala) {
-    Composite compositeOriginal = g.getComposite();
-    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
-            Math.max(0f, Math.min(1f, alpha))));
+    private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float escala) {
+        Composite compositeOriginal = g.getComposite();
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                Math.max(0f, Math.min(1f, alpha))));
 
-    int[] xs = {2, 2, 8, -2, -2, -8};
-    int[] ys = {-10, -2, -2, 10, 2, 2};
-    Polygon raio = new Polygon();
-    for (int i = 0; i < xs.length; i++) {
-        raio.addPoint(cx + Math.round(xs[i] * escala), cy + Math.round(ys[i] * escala));
+        int[] xs = {2, 2, 8, -2, -2, -8};
+        int[] ys = {-10, -2, -2, 10, 2, 2};
+        Polygon raio = new Polygon();
+        for (int i = 0; i < xs.length; i++) {
+            raio.addPoint(cx + Math.round(xs[i] * escala), cy + Math.round(ys[i] * escala));
+        }
+
+        g.setColor(Color.RED);
+        g.fillPolygon(raio);
+        g.setColor(Color.BLACK);
+        g.drawPolygon(raio);
+
+        g.setComposite(compositeOriginal);
     }
-
-    g.setColor(Color.RED);
-    g.fillPolygon(raio);
-    g.setColor(Color.BLACK);
-    g.drawPolygon(raio);
-
-    g.setComposite(compositeOriginal);
-}
 
     @Override
     public void paint(Graphics2D g, JXMapViewer map, int w, int h) {
@@ -215,14 +212,10 @@ private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float 
             int x2 = (int) (ptDes.getX() - bounds.getX());
             int y2 = (int) (ptDes.getY() - bounds.getY());
 
-            // NOVO: uma aresta "toca" diretamente um poste marcado como quebrado
-            // (fonte real da falha), diferente de estar so sem energia por cascata
             boolean tocaVerticeQuebrado = verticesInativosManuais.contains(aresta.origem)
                     || verticesInativosManuais.contains(aresta.destino);
 
             if (isSemEnergia) {
-                // Linha tracejada com a fase do tracejado deslocando a cada frame,
-                // dando a sensacao de "instabilidade"/circuito rompido
                 float faseTraço = (float) (progressoAnimacao * 40);
                 g.setColor(Color.RED);
                 g.setStroke(new BasicStroke(3, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
@@ -244,30 +237,22 @@ private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float 
             g.drawString(aresta.peso + "m", (x1 + x2) / 2, (y1 + y2) / 2);
 
             if (isSemEnergia) {
-                // NOVO: raio (spark) pulsante no meio da aresta, no lugar da bolinha
-                // amarela de energia fluindo (afinal, aqui NAO ha energia fluindo)
                 int midX = (x1 + x2) / 2;
                 int midY = (y1 + y2) / 2;
                 if (tocaVerticeQuebrado) {
-                    // ponto real da falha: pisca rapido e forte
                     float alpha = (float) (0.5 + 0.5 * Math.sin(progressoAnimacao * Math.PI * 8));
                     desenharRaioFalha(g, midX, midY, alpha, 1.3f);
                 } else {
-                    // afetado em cascata: pisca devagar e mais fraco
                     float alpha = (float) (0.3 + 0.3 * Math.sin(progressoAnimacao * Math.PI * 2));
                     desenharRaioFalha(g, midX, midY, alpha, 0.8f);
                 }
             } else if (!isDestacada || corDestaque == Color.GREEN || corDestaque == Color.MAGENTA) {
-                // NOVO: Pega a distância calculada pela BFS (se não achar, assume que tá muito longe/sem energia)
                 int dOrigem = distanciasSubestacao.getOrDefault(aresta.origem, 9999);
                 int dDestino = distanciasSubestacao.getOrDefault(aresta.destino, 9999);
 
                 int startX = x1, startY = y1;
                 int endX = x2, endY = y2;
                 
-                // NOVO: Se a origem da aresta estiver MAIS LONGE da fonte de energia que o destino,
-                // significa que a energia está fluindo no sentido inverso (do destino para a origem).
-                // Invertemos os pontos para a animação seguir o sentido correto!
                 if (dOrigem > dDestino) {
                     startX = x2;
                     startY = y2;
@@ -283,7 +268,6 @@ private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float 
         }
 
         g.setFont(new Font("Arial", Font.BOLD, 10));
-        FontMetrics fm = g.getFontMetrics();
 
         for (Map.Entry<String, VerticeVis> entry : vertices.entrySet()) {
             String nomeVertice = entry.getKey();
@@ -296,28 +280,28 @@ private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float 
             int x = (int) (pt.getX() - bounds.getX());
             int y = (int) (pt.getY() - bounds.getY());
 
-            int tamanho = 18;
+            // TAMANHOS AJUSTADOS CONFORME SEU PEDIDO
+            int tamanho = 14; // POSTE (tamanho antigo das casas)
             Color cor = Color.ORANGE;
-            String letraBase = "P";
 
             if (v.tipo == TipoVertice.SUBESTACAO) {
-                tamanho = 26;
+                tamanho = 26; // SUBESTAÇÃO (tamanho original)
                 cor = new Color(138, 43, 226);
-                letraBase = "S";
             } else if (v.tipo == TipoVertice.CASA) {
-                tamanho = 14;
+                tamanho = 10; // CASA (um pouco menor que o poste)
                 cor = new Color(30, 144, 255);
-                letraBase = "C";
             }
 
             boolean isSemEnergia = verticesSemEnergia.contains(nomeVertice);
             boolean isQuebrado = verticesInativosManuais.contains(nomeVertice);
 
+            // Borda de seleção quando destacado por algum algoritmo
             if (verticesDestacados.contains(nomeVertice) && corDestaque != Color.MAGENTA) {
                 g.setColor(corDestaque);
                 g.fillOval(x - (tamanho / 2 + 6), y - (tamanho / 2 + 6), tamanho + 12, tamanho + 12);
             }
 
+            // Borda de destaque quando o poste está quebrado
             if (isQuebrado) {
                 g.setColor(Color.BLACK);
                 g.fillOval(x - (tamanho / 2 + 6), y - (tamanho / 2 + 6), tamanho + 12, tamanho + 12);
@@ -326,27 +310,22 @@ private void desenharRaioFalha(Graphics2D g, int cx, int cy, float alpha, float 
                 cor = Color.RED;
             }
 
+            // Borda azul clara para vértice selecionado manualmente
             if (nomeVertice.equals(verticeDestaque)) {
                 g.setColor(Color.CYAN);
                 g.fillOval(x - (tamanho / 2 + 4), y - (tamanho / 2 + 4), tamanho + 8, tamanho + 8);
             }
 
+            // Círculo principal do nó
             g.setColor(cor);
             g.fillOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+            
+            // Bordinha sutil para dar acabamento
+            g.setColor(Color.DARK_GRAY);
+            g.drawOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
 
-            String[] partes = nomeVertice.split("_");
-            String sigla = partes.length > 1 ? letraBase + partes[1] : letraBase;
-
-            if (cor == Color.RED || cor == Color.ORANGE || cor == Color.BLACK) {
-                g.setColor(Color.WHITE);
-            } else {
-                g.setColor(Color.BLACK);
-            }
-
-            int textWidth = fm.stringWidth(sigla);
-            int textHeight = fm.getAscent();
-            g.drawString(sigla, x - textWidth / 2, y + textHeight / 2 - 1);
-
+            // Mantém apenas a renderização da caixinha com o número (#1, #2)
+            // para as buscas BFS/DFS, ignorando os rótulos de nome fixos.
             if (ordemVisitaAlgoritmo.containsKey(nomeVertice)) {
                 String numOrdem = "#" + ordemVisitaAlgoritmo.get(nomeVertice);
                 g.setFont(new Font("Arial", Font.BOLD, 12));
