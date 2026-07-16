@@ -6,6 +6,7 @@ import algoritmos.CaminhoAlternativo;
 import algoritmos.AreasAfetadas;
 import algoritmos.FluxoMaximo;
 import algoritmos.Pontes;
+import algoritmos.PontosArticulacao;
 import algoritmos.PontosPrioritarios;
 import algoritmos.AGM;
 
@@ -514,6 +515,15 @@ public void limparGrafo() {
                 System.out.println("[" + p.getU().getNome() + "] - [" + p.getV().getNome() + "]");
             }
         }
+    }
+
+    // ============================================================
+    // PONTOS DE ARTICULAÇÃO (delega para AlgoritmoPontosArticulacao)
+    // ============================================================
+
+    /** Postes ativos cuja queda, agora, isolaria trechos da rede. */
+    public List<TIPO> encontrarPontosArticulacao() {
+        return new PontosArticulacao<>(this.vertice, this.aresta).executar();
     }
 
     /**

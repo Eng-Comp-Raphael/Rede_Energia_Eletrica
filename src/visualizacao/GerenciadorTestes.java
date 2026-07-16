@@ -5,17 +5,26 @@ import estruturaGrafo.Aresta;
 import visualizacao.PintorConexoes.TipoVertice;
 
 import javax.swing.*;
+import javax.swing.border.TitledBorder;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class GerenciadorTestes {
 
@@ -34,6 +43,10 @@ public class GerenciadorTestes {
     private JDialog janelaPersonalizada;
     private JTextArea logPersonalizado;
     private JComboBox<String> seletorComponente;
+
+    // --- Componentes do Relatório (janela própria, separada do Painel de Testes) ---
+    private JDialog janelaRelatorio;
+    private JTextArea areaRelatorio;
 
     public GerenciadorTestes(VisualizadorRede interfacePrincipal) {
         this.interfacePrincipal = interfacePrincipal;
@@ -185,30 +198,50 @@ public class GerenciadorTestes {
     private void criarJanelaPersonalizada() {
         janelaPersonalizada = new JDialog(interfacePrincipal, "Painel de Testes Livres", false);
         Dimension tamanhoTela = Toolkit.getDefaultToolkit().getScreenSize();
-        janelaPersonalizada.setSize(450, tamanhoTela.height / 2);
+        janelaPersonalizada.setSize(400, Math.min(600, tamanhoTela.height - 120));
+        janelaPersonalizada.setMinimumSize(new Dimension(360, 420));
         janelaPersonalizada.setLayout(new BorderLayout());
         janelaPersonalizada.setAlwaysOnTop(true);
 
-        // Painel Superior com fundo ESCURO (padrão mantido)
-        JPanel painelAcoes = new JPanel(new GridLayout(7, 1, 5, 5));
-        painelAcoes.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        // Painel Superior com fundo ESCURO (padrão mantido), agora organizado em
+        // seções temáticas para reduzir a altura ocupada e facilitar a leitura.
+        JPanel painelAcoes = new JPanel();
+        painelAcoes.setLayout(new BoxLayout(painelAcoes, BoxLayout.Y_AXIS));
+        painelAcoes.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         painelAcoes.setBackground(Color.DARK_GRAY);
 
-        JButton btnEstresse = new JButton("💥 Derrubar Nó Aleatório");
         seletorComponente = new JComboBox<>();
-        JButton btnDerrubarSelecionado = new JButton("Derrubar componente selecionado");
-        JButton btnReligarSelecionado = new JButton("Religar componente selecionado");
-        JButton btnCaminhoAuto = new JButton("🛣️ Auto: Subestação ➔ Mais Distante"); // NOVO BOTÃO
+        JButton btnEstresse = new JButton("💥 Derrubar Nó Aleatório");
+        JButton btnDerrubarSelecionado = new JButton("⬇ Derrubar");
+        JButton btnReligarSelecionado = new JButton("⬆ Religar");
+        JButton btnCaminhoAuto = new JButton("🛣️ Auto: Subestação ➔ Mais Distante");
         JButton btnCaminho = new JButton("🛣️ Rota Específica (Origem ➔ Destino)");
         JButton btnPrioridade = new JButton("⚠️ Analisar Pontos Prioritários");
 
-        painelAcoes.add(btnEstresse);
-        painelAcoes.add(seletorComponente);
-        painelAcoes.add(btnDerrubarSelecionado);
-        painelAcoes.add(btnReligarSelecionado);
-        painelAcoes.add(btnCaminhoAuto);
-        painelAcoes.add(btnCaminho);
-        painelAcoes.add(btnPrioridade);
+        JPanel secaoComponente = criarSecao("Componente Selecionado");
+        adicionarNaSecao(secaoComponente, seletorComponente);
+        secaoComponente.add(Box.createVerticalStrut(6));
+        JPanel linhaDerrubarReligar = new JPanel(new GridLayout(1, 2, 6, 0));
+        linhaDerrubarReligar.setOpaque(false);
+        linhaDerrubarReligar.add(btnDerrubarSelecionado);
+        linhaDerrubarReligar.add(btnReligarSelecionado);
+        adicionarNaSecao(secaoComponente, linhaDerrubarReligar);
+
+        JPanel secaoTestes = criarSecao("Testes Rápidos");
+        adicionarNaSecao(secaoTestes, btnEstresse);
+
+        JPanel secaoRotas = criarSecao("Análise de Rotas e Prioridades");
+        adicionarNaSecao(secaoRotas, btnCaminhoAuto);
+        secaoRotas.add(Box.createVerticalStrut(6));
+        adicionarNaSecao(secaoRotas, btnCaminho);
+        secaoRotas.add(Box.createVerticalStrut(6));
+        adicionarNaSecao(secaoRotas, btnPrioridade);
+
+        painelAcoes.add(secaoComponente);
+        painelAcoes.add(Box.createVerticalStrut(8));
+        painelAcoes.add(secaoTestes);
+        painelAcoes.add(Box.createVerticalStrut(8));
+        painelAcoes.add(secaoRotas);
 
         // Área de Log agora usa o estilo CLARO (igual ao teste automático)
         logPersonalizado = new JTextArea();
@@ -232,11 +265,12 @@ public class GerenciadorTestes {
             
             grafo.setPosteAtivo(noSorteado, !estadoAtual);
             interfacePrincipal.recalcularEnergia();
-            
+
             String acao = !estadoAtual ? "RELIGADO" : "DERRUBADO";
             logPersonalizado.append("\n\n[ESTRESSE] Componente '" + noSorteado + "' foi " + acao + "!");
             if (estadoAtual) {
                 logPersonalizado.append("\n\n" + gerarRelatorioDeFalha());
+                notificarFalha(noSorteado);
             }
             logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
         });
@@ -305,10 +339,29 @@ public class GerenciadorTestes {
         });
 
         btnPrioridade.addActionListener(e -> {
-            String resultadoConsole = capturarSaidaConsole(() -> grafo.printPontosPrioritarios());
-            logPersonalizado.append("\n\n[ANÁLISE PRIORITÁRIA]:\n" + resultadoConsole);
+            logPersonalizado.append("\n\n[PONTOS PRIORITÁRIOS PARA MANUTENÇÃO]:\n" + gerarSecoesImpacto());
             logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
         });
+    }
+
+    /** Cria um bloco temático com título, usado para agrupar botões relacionados no painel. */
+    private JPanel criarSecao(String titulo) {
+        JPanel painel = new JPanel();
+        painel.setLayout(new BoxLayout(painel, BoxLayout.Y_AXIS));
+        painel.setBackground(new Color(60, 60, 60));
+        painel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(new Color(90, 90, 90)),
+                titulo, TitledBorder.LEFT, TitledBorder.TOP,
+                new Font("SansSerif", Font.BOLD, 11), new Color(220, 220, 220)));
+        painel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return painel;
+    }
+
+    /** Adiciona um componente a uma seção fazendo-o ocupar toda a largura disponível. */
+    private void adicionarNaSecao(JPanel secao, JComponent componente) {
+        componente.setAlignmentX(Component.LEFT_ALIGNMENT);
+        componente.setMaximumSize(new Dimension(Integer.MAX_VALUE, componente.getPreferredSize().height));
+        secao.add(componente);
     }
 
     // ==========================================
@@ -339,20 +392,66 @@ public class GerenciadorTestes {
     }
 
     public void registrarFalhaManualNoMapa(String vertice, boolean religado) {
-        if (janelaPersonalizada == null || !janelaPersonalizada.isVisible()) {
-            executarTestePersonalizado(); // Garante que a janela abra se o usuário clicou direto no mapa
+        // O painel não abre mais sozinho ao simular: só registra no log se ele já
+        // estiver aberto (acesse-o pelo botão "🛠️ Painel de Testes" quando quiser).
+        if (janelaPersonalizada != null && janelaPersonalizada.isVisible()) {
+            String acao = religado ? "RELIGADO" : "DERRUBADO";
+            logPersonalizado.append("\n\n----------------------------------");
+            logPersonalizado.append("\n[MAPA] Componente '" + vertice + "' foi " + acao + "!");
+            if (!religado) {
+                logPersonalizado.append("\n\n" + gerarRelatorioDeFalha());
+            }
+            logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
         }
-        
-        String acao = religado ? "RELIGADO" : "DERRUBADO";
-        logPersonalizado.append("\n\n----------------------------------");
-        logPersonalizado.append("\n[MAPA] Componente '" + vertice + "' foi " + acao + "!");
-        
+
         if (!religado) {
-            logPersonalizado.append("\n\n" + gerarRelatorioDeFalha());
+            notificarFalha(vertice);
         }
-        
-        logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
     }
+
+    // ==========================================
+    // 4. ALERTAS DE FALHA (SOM + AVISO DE FALHA CRÍTICA)
+    // ==========================================
+
+    /** Só toca alerta sonoro (e acende o ícone lateral) quando a falha é crítica. */
+    private void notificarFalha(String vertice) {
+        if (ehFalhaCritica(vertice)) {
+            Toolkit.getDefaultToolkit().beep();
+            sinalizarFalhaCritica();
+        }
+    }
+
+    /**
+     * Uma falha é considerada crítica quando, além do próprio componente, outros pontos da
+     * rede perdem energia por consequência (efeito cascata) - ou seja, quando o poste
+     * derrubado realmente fez outras conexões caírem junto.
+     */
+    private boolean ehFalhaCritica(String vertice) {
+        int impactoIndireto = 0;
+        for (String id : pintor.getVerticesSemEnergia()) {
+            if (!id.equals(vertice)) {
+                impactoIndireto++;
+            }
+        }
+        return impactoIndireto > 0;
+    }
+
+    /**
+     * Se o relatório já estiver aberto, só atualiza o conteúdo dele (o som já avisa a falha).
+     * Caso contrário, acende o ícone piscante na lateral da janela principal; clicar nele abre
+     * o relatório completo.
+     */
+    private void sinalizarFalhaCritica() {
+        if (janelaRelatorio != null && janelaRelatorio.isVisible()) {
+            atualizarConteudoRelatorio();
+        } else {
+            interfacePrincipal.ativarAlertaCritico(this::abrirRelatorioCompleto);
+        }
+    }
+
+    // ==========================================
+    // 5. RELATÓRIOS (IMPACTO DE FALHA E RELATÓRIO COMPLETO)
+    // ==========================================
 
     /**
      * Relatório enxuto: relaciona somente itens diretamente atingidos por uma falha.
@@ -360,80 +459,139 @@ public class GerenciadorTestes {
      * componente derrubado.
      */
     private String gerarRelatorioDeFalha() {
-        Set<String> componentesEmFalha = new HashSet<>();
+        return "=== RELATÓRIO DE IMPACTO ===\n\n" + gerarSecoesImpacto();
+    }
+
+    /** Monta o relatório de impacto: postes em falha por região, gravidade de cada um e prioridade de reparo. */
+    private String gerarSecoesImpacto() {
+        List<String> postesEmFalha = new ArrayList<>();
         for (String id : pintor.getVertices().keySet()) {
             if (!grafo.posteAtivo(id)) {
-                componentesEmFalha.add(id);
+                postesEmFalha.add(id);
             }
         }
 
-        if (componentesEmFalha.isEmpty()) {
-            return "[RELATÓRIO DE IMPACTO]\nNenhum componente está em falha.";
+        if (postesEmFalha.isEmpty()) {
+            return "Nenhum poste está em falha no momento.\n";
         }
 
-        List<Aresta<String>> cabosAfetados = new ArrayList<>();
-        Map<String, Integer> grau = new HashMap<>();
-        for (String id : pintor.getVertices().keySet()) {
-            grau.put(id, 0);
+        Map<String, String> regiaoDoPoste = calcularRegiaoPorSubestacaoMaisProxima();
+        Map<String, List<String>> falhasPorRegiao = new TreeMap<>();
+        for (String id : postesEmFalha) {
+            String regiao = regiaoDoPoste.getOrDefault(id, "Sem região definida");
+            falhasPorRegiao.computeIfAbsent(regiao, r -> new ArrayList<>()).add(id);
         }
-        for (Aresta<String> cabo : grafo.getArestas()) {
-            String origem = cabo.getU().getNome();
-            String destino = cabo.getV().getNome();
-            if (cabo.getAtivo()) {
-                grau.merge(origem, 1, Integer::sum);
-                grau.merge(destino, 1, Integer::sum);
-            }
-            if (!cabo.getAtivo() || componentesEmFalha.contains(origem) || componentesEmFalha.contains(destino)) {
-                cabosAfetados.add(cabo);
-            }
+        for (List<String> postesDaRegiao : falhasPorRegiao.values()) {
+            postesDaRegiao.sort(String::compareTo);
         }
 
-        StringBuilder relatorio = new StringBuilder("[RELATÓRIO DE IMPACTO]\n");
-        List<String> pontosCriticos = new ArrayList<>();
-        for (String id : componentesEmFalha) {
-            if (ehPontoCritico(id)) {
-                pontosCriticos.add(id);
-            }
+        // Ordem final usada no detalhamento e na prioridade: agrupado por região,
+        // e dentro de cada região em ordem alfabética.
+        List<String> postesEmFalhaOrdenados = new ArrayList<>();
+        for (List<String> postesDaRegiao : falhasPorRegiao.values()) {
+            postesEmFalhaOrdenados.addAll(postesDaRegiao);
         }
-        pontosCriticos.sort(String::compareTo);
-        if (!pontosCriticos.isEmpty()) {
-            relatorio.append("\nPontos críticos em falha:\n");
-            for (String id : pontosCriticos) {
-                relatorio.append("• ").append(id).append('\n');
+
+        StringBuilder relatorio = new StringBuilder();
+        relatorio.append("1. Falhas por região:\n");
+        for (Map.Entry<String, List<String>> entrada : falhasPorRegiao.entrySet()) {
+            relatorio.append("\n   Região: ").append(entrada.getKey()).append('\n');
+            for (String id : entrada.getValue()) {
+                relatorio.append("     • ").append(id).append('\n');
             }
         }
 
-        List<String> fragilizados = new ArrayList<>(componentesEmFalha);
-        fragilizados.sort(Comparator.comparingInt(id -> grau.getOrDefault(id, 0)));
-        relatorio.append("\nPontos mais frágeis em falha:\n");
-        for (String id : fragilizados) {
-            relatorio.append("• ").append(id).append(" (grau ")
-                    .append(grau.getOrDefault(id, 0)).append(")\n");
+        Map<String, Integer> grauDaFalha = new HashMap<>();
+        for (String id : postesEmFalhaOrdenados) {
+            grauDaFalha.put(id, calcularGrauDaFalha(id));
         }
 
-        cabosAfetados.sort((a, b) -> Integer.compare(b.getLambda(), a.getLambda()));
-        if (!cabosAfetados.isEmpty()) {
-            relatorio.append("\nCabos mais longos afetados:\n");
-            for (Aresta<String> cabo : cabosAfetados) {
-                relatorio.append("• [").append(cabo.getU().getNome()).append("] - [")
-                        .append(cabo.getV().getNome()).append("] (")
-                        .append(cabo.getLambda()).append("m)\n");
+        relatorio.append("\n2. Detalhamento:\n");
+        for (String id : postesEmFalhaOrdenados) {
+            List<Aresta<String>> cabosProximos = new ArrayList<>();
+            for (Aresta<String> cabo : grafo.getArestas()) {
+                if (cabo.getU().getNome().equals(id) || cabo.getV().getNome().equals(id)) {
+                    cabosProximos.add(cabo);
+                }
+            }
+
+            int quedasJunto = grauDaFalha.get(id);
+            relatorio.append("\n   ⚡ ").append(id).append('\n');
+            relatorio.append("      Grau da falha: ").append(classificarGrauDaFalha(quedasJunto))
+                    .append(" (").append(quedasJunto)
+                    .append(quedasJunto == 1 ? " poste cai junto)\n" : " postes caem juntos)\n");
+
+            if (cabosProximos.isEmpty()) {
+                relatorio.append("      Fios próximos: nenhum (poste isolado)\n");
+            } else {
+                relatorio.append("      Fios próximos:\n");
+                for (Aresta<String> cabo : cabosProximos) {
+                    relatorio.append("        - [").append(cabo.getU().getNome()).append("] - [")
+                            .append(cabo.getV().getNome()).append("] (").append(cabo.getLambda()).append("m)\n");
+                }
+            }
+
+            List<String> criticosConectados = new ArrayList<>();
+            for (Aresta<String> cabo : cabosProximos) {
+                String vizinho = cabo.getU().getNome().equals(id) ? cabo.getV().getNome() : cabo.getU().getNome();
+                if (pintor.getPontosCriticos().contains(vizinho)) {
+                    criticosConectados.add(vizinho);
+                }
+            }
+            if (!criticosConectados.isEmpty()) {
+                criticosConectados.sort(String::compareTo);
+                relatorio.append("      ⚠ Pontos críticos conectados: ")
+                        .append(String.join(", ", criticosConectados)).append('\n');
             }
         }
+
+        if (postesEmFalhaOrdenados.size() > 1) {
+            List<String> prioridade = new ArrayList<>(postesEmFalhaOrdenados);
+            prioridade.sort((a, b) -> {
+                int cmp = Integer.compare(grauDaFalha.get(b), grauDaFalha.get(a));
+                return cmp != 0 ? cmp : a.compareTo(b);
+            });
+            relatorio.append("\n3. Prioridade de reparo sugerida:\n");
+            for (int i = 0; i < prioridade.size(); i++) {
+                String id = prioridade.get(i);
+                relatorio.append("   ").append(i + 1).append("º ").append(id)
+                        .append(" (").append(grauDaFalha.get(id)).append(" postes afetados)\n");
+            }
+        }
+
         return relatorio.toString();
     }
 
-    /** Verifica se retirar o vértice aumenta o número de componentes da rede. */
-    private boolean ehPontoCritico(String candidato) {
-        return contarComponentes(null) < contarComponentes(candidato);
+    private String classificarGrauDaFalha(int postesQueCaemJunto) {
+        if (postesQueCaemJunto == 0) {
+            return "BAIXO";
+        }
+        if (postesQueCaemJunto <= 3) {
+            return "MODERADO";
+        }
+        return "ALTO";
     }
 
-    private int contarComponentes(String verticeIgnorado) {
-        Map<String, List<String>> adjacencias = new HashMap<>();
+    /**
+     * Simula "e se só ESTE poste tivesse caído": reativa temporariamente os demais postes
+     * que estão fora do ar, refaz a energização a partir das subestações ativas e conta
+     * quantos outros postes ficam sem energia por causa exclusivamente deste poste. Assim
+     * dá pra saber o grau de cada falha mesmo quando várias acontecem ao mesmo tempo.
+     */
+    private int calcularGrauDaFalha(String posteFalho) {
+        List<String> outrosInativos = new ArrayList<>();
         for (String id : pintor.getVertices().keySet()) {
-            if (!id.equals(verticeIgnorado)) {
-                adjacencias.put(id, new ArrayList<>());
+            if (!id.equals(posteFalho) && !grafo.posteAtivo(id)) {
+                outrosInativos.add(id);
             }
+        }
+        for (String id : outrosInativos) {
+            grafo.setPosteAtivo(id, true);
+        }
+
+        Map<String, List<String>> adjacencia = new HashMap<>();
+        for (String id : pintor.getVertices().keySet()) {
+            adjacencia.put(id, new ArrayList<>());
         }
         for (Aresta<String> cabo : grafo.getArestas()) {
             if (!cabo.getAtivo()) {
@@ -441,43 +599,231 @@ public class GerenciadorTestes {
             }
             String origem = cabo.getU().getNome();
             String destino = cabo.getV().getNome();
-            if (adjacencias.containsKey(origem) && adjacencias.containsKey(destino)) {
-                adjacencias.get(origem).add(destino);
-                adjacencias.get(destino).add(origem);
-            }
+            adjacencia.get(origem).add(destino);
+            adjacencia.get(destino).add(origem);
         }
 
-        Set<String> visitados = new HashSet<>();
-        int componentes = 0;
-        for (String origem : adjacencias.keySet()) {
-            if (!visitados.add(origem)) {
-                continue;
+        Set<String> alcancaveis = new HashSet<>();
+        Queue<String> fila = new LinkedList<>();
+        for (Map.Entry<String, PintorConexoes.VerticeVis> entry : pintor.getVertices().entrySet()) {
+            if (entry.getValue().tipo == TipoVertice.SUBESTACAO && grafo.posteAtivo(entry.getKey())) {
+                alcancaveis.add(entry.getKey());
+                fila.add(entry.getKey());
             }
-            componentes++;
-            List<String> pendentes = new ArrayList<>();
-            pendentes.add(origem);
-            for (int i = 0; i < pendentes.size(); i++) {
-                for (String vizinho : adjacencias.get(pendentes.get(i))) {
-                    if (visitados.add(vizinho)) {
-                        pendentes.add(vizinho);
-                    }
+        }
+        while (!fila.isEmpty()) {
+            String atual = fila.poll();
+            for (String vizinho : adjacencia.get(atual)) {
+                if (!alcancaveis.contains(vizinho) && grafo.posteAtivo(vizinho)) {
+                    alcancaveis.add(vizinho);
+                    fila.add(vizinho);
                 }
             }
         }
-        return componentes;
+
+        int quedasPorCausaDele = 0;
+        for (String id : pintor.getVertices().keySet()) {
+            if (id.equals(posteFalho)) {
+                continue;
+            }
+            if (!grafo.posteAtivo(id) || !alcancaveis.contains(id)) {
+                quedasPorCausaDele++;
+            }
+        }
+
+        for (String id : outrosInativos) {
+            grafo.setPosteAtivo(id, false);
+        }
+
+        return quedasPorCausaDele;
+    }
+
+    /**
+     * Agrupa cada poste da rede pela subestação mais próxima (menor número de saltos na
+     * topologia, ignorando o estado ativo/inativo). É essa subestação que representa a
+     * "região/bairro" do poste no relatório - o mesmo agrupamento natural de uma rede de
+     * distribuição real, onde cada bairro é alimentado por uma subestação específica.
+     */
+    private Map<String, String> calcularRegiaoPorSubestacaoMaisProxima() {
+        Map<String, List<String>> adjacencia = new HashMap<>();
+        for (String id : pintor.getVertices().keySet()) {
+            adjacencia.put(id, new ArrayList<>());
+        }
+        for (Aresta<String> cabo : grafo.getArestas()) {
+            String origem = cabo.getU().getNome();
+            String destino = cabo.getV().getNome();
+            adjacencia.get(origem).add(destino);
+            adjacencia.get(destino).add(origem);
+        }
+
+        List<String> subestacoes = new ArrayList<>();
+        for (Map.Entry<String, PintorConexoes.VerticeVis> entry : pintor.getVertices().entrySet()) {
+            if (entry.getValue().tipo == TipoVertice.SUBESTACAO) {
+                subestacoes.add(entry.getKey());
+            }
+        }
+        subestacoes.sort(String::compareTo);
+
+        Map<String, String> regiaoDoPoste = new HashMap<>();
+        Map<String, Integer> menorDistancia = new HashMap<>();
+
+        for (String subestacao : subestacoes) {
+            Map<String, Integer> distancias = new HashMap<>();
+            Queue<String> fila = new LinkedList<>();
+            distancias.put(subestacao, 0);
+            fila.add(subestacao);
+
+            while (!fila.isEmpty()) {
+                String atual = fila.poll();
+                for (String vizinho : adjacencia.get(atual)) {
+                    if (!distancias.containsKey(vizinho)) {
+                        distancias.put(vizinho, distancias.get(atual) + 1);
+                        fila.add(vizinho);
+                    }
+                }
+            }
+
+            for (Map.Entry<String, Integer> entrada : distancias.entrySet()) {
+                String poste = entrada.getKey();
+                int distancia = entrada.getValue();
+                if (!menorDistancia.containsKey(poste) || distancia < menorDistancia.get(poste)) {
+                    menorDistancia.put(poste, distancia);
+                    regiaoDoPoste.put(poste, subestacao);
+                }
+            }
+        }
+
+        return regiaoDoPoste;
+    }
+
+    /** Relatório completo: resumo geral da rede + impacto atual + prioridades gerais de manutenção. */
+    private String gerarRelatorioCompleto() {
+        StringBuilder sb = new StringBuilder();
+        String timestamp = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new Date());
+        sb.append("============================================\n");
+        sb.append(" RELATÓRIO COMPLETO DA REDE DE ENERGIA\n");
+        sb.append(" Gerado em: ").append(timestamp).append('\n');
+        sb.append("============================================\n\n");
+
+        int totalComponentes = pintor.getVertices().size();
+        int totalConexoes = grafo.getArestas().size();
+        int derrubadosManual = 0;
+        for (String id : pintor.getVertices().keySet()) {
+            if (!grafo.posteAtivo(id)) {
+                derrubadosManual++;
+            }
+        }
+
+        sb.append("1. RESUMO GERAL\n");
+        sb.append("--------------------------------------------\n");
+        sb.append("Total de componentes: ").append(totalComponentes).append('\n');
+        sb.append("Total de conexões: ").append(totalConexoes).append('\n');
+        sb.append("Componentes em falha: ").append(derrubadosManual).append('\n');
+        sb.append("Componentes sem energia pelo efeito cascata: ")
+                .append(pintor.getVerticesSemEnergia().size()).append("\n\n");
+
+        sb.append("2. PONTOS PRIORITÁRIOS PARA MANUTENÇÃO\n");
+        sb.append("--------------------------------------------\n");
+        sb.append(gerarSecoesImpacto());
+
+        return sb.toString();
+    }
+
+    /**
+     * Abre o relatório em sua própria janela, independente do Painel de Testes Livres
+     * (não é mais um popup preso a ele). Usa as mesmas cores (moldura escura + conteúdo
+     * claro) só para manter a identidade visual entre as duas janelas.
+     */
+    public void abrirRelatorioCompleto() {
+        if (janelaRelatorio == null) {
+            criarJanelaRelatorio();
+        }
+        atualizarConteudoRelatorio();
+        posicionarJanelaDireita(janelaRelatorio);
+        janelaRelatorio.setVisible(true);
+        janelaRelatorio.toFront();
+    }
+
+    private void criarJanelaRelatorio() {
+        janelaRelatorio = new JDialog(interfacePrincipal, "Relatório da Rede", false);
+        Dimension tamanhoTela = Toolkit.getDefaultToolkit().getScreenSize();
+        janelaRelatorio.setSize(560, Math.min(650, tamanhoTela.height - 120));
+        janelaRelatorio.setMinimumSize(new Dimension(420, 360));
+        janelaRelatorio.setLayout(new BorderLayout());
+        janelaRelatorio.setAlwaysOnTop(true);
+
+        areaRelatorio = new JTextArea();
+        areaRelatorio.setEditable(false);
+        areaRelatorio.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        areaRelatorio.setBackground(new Color(240, 240, 245));
+        areaRelatorio.setForeground(Color.BLACK);
+        areaRelatorio.setMargin(new Insets(12, 12, 12, 12));
+
+        JPanel painelConteudo = new JPanel(new BorderLayout());
+        painelConteudo.setBackground(Color.DARK_GRAY);
+        painelConteudo.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        painelConteudo.add(new JScrollPane(areaRelatorio), BorderLayout.CENTER);
+
+        JButton btnAtualizar = new JButton("🔄 Atualizar");
+        btnAtualizar.addActionListener(e -> atualizarConteudoRelatorio());
+        JButton btnSalvar = new JButton("💾 Salvar em Arquivo...");
+        btnSalvar.addActionListener(e -> salvarRelatorioEmArquivo(areaRelatorio.getText()));
+
+        JPanel painelInferior = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
+        painelInferior.setBackground(Color.DARK_GRAY);
+        painelInferior.add(btnAtualizar);
+        painelInferior.add(btnSalvar);
+
+        janelaRelatorio.add(painelConteudo, BorderLayout.CENTER);
+        janelaRelatorio.add(painelInferior, BorderLayout.SOUTH);
+    }
+
+    private void atualizarConteudoRelatorio() {
+        areaRelatorio.setText(gerarRelatorioCompleto());
+        areaRelatorio.setCaretPosition(0);
+    }
+
+    private void salvarRelatorioEmArquivo(String conteudo) {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Salvar Relatório...");
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Arquivo de Texto (.txt)", "txt"));
+
+        if (fileChooser.showSaveDialog(janelaRelatorio) == JFileChooser.APPROVE_OPTION) {
+            File arquivo = fileChooser.getSelectedFile();
+            if (!arquivo.getName().toLowerCase().endsWith(".txt")) {
+                arquivo = new File(arquivo.getParentFile(), arquivo.getName() + ".txt");
+            }
+            try (PrintWriter out = new PrintWriter(new FileWriter(arquivo))) {
+                out.print(conteudo);
+                JOptionPane.showMessageDialog(janelaRelatorio, "Relatório salvo em:\n" + arquivo.getAbsolutePath());
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(janelaRelatorio, "Erro ao salvar arquivo: " + ex.getMessage(), "Erro",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        }
     }
 
     // ==========================================
-    // 4. MÉTODOS AUXILIARES
+    // 6. MÉTODOS AUXILIARES
     // ==========================================
 
     private void posicionarJanela(JDialog janela) {
         //Dimension tamanhoTela = Toolkit.getDefaultToolkit().getScreenSize();
         Point loc = interfacePrincipal.getLocationOnScreen();
-        
+
         int x = loc.x + 20;
         int y = Math.max(0, loc.y + interfacePrincipal.getHeight() - janela.getHeight() - 40);
-        
+
+        janela.setLocation(x, y);
+    }
+
+    /** Ancora no canto inferior direito, para não sobrepor o Painel de Testes Livres (canto esquerdo). */
+    private void posicionarJanelaDireita(JDialog janela) {
+        Point loc = interfacePrincipal.getLocationOnScreen();
+
+        int x = loc.x + interfacePrincipal.getWidth() - janela.getWidth() - 20;
+        int y = Math.max(0, loc.y + interfacePrincipal.getHeight() - janela.getHeight() - 40);
+
         janela.setLocation(x, y);
     }
     

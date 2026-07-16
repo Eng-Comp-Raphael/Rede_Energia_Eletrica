@@ -75,8 +75,18 @@ Na interface, todos os tipos visuais (subestação, poste e casa) são adicionad
 
 **Testes**
 
-- **Rodar Cenário Automático**: cria uma rede-base e conduz um roteiro visual de etapas.
-- **Testar Rede Desenhada**: abre uma janela para escolher componentes, aplicar/reparar falhas e consultar o relatório da rede.
+- **Rodar Cenário Automático (`AmbienteTeste`)**: abre um painel lateral com 4 etapas navegáveis (Continuar/Voltar/Resetar), sempre reconstruindo a mesma rede pré-definida de `ModeloTesteAutomatico` (4 subestações, anel de transmissão e vários bairros da região de Cruz das Almas):
+  1. **Rede base**: toda a topologia é criada e energizada (bolinhas amarelas fluindo a partir das subestações).
+  2. **Queda da subestação**: `Sub_Centro` e `Sub_Coplan` são desativadas ao mesmo tempo; toda a rede dependente aparece com raios vermelhos.
+  3. **Sistema normalizado**: as duas subestações voltam a ficar ativas e a energia é recalculada.
+  4. **Nó crítico interrompido**: `P_Vargas1` é desativado; o painel mostra o caminho alternativo calculado até `Casa_Primavera` e o relatório de pontos prioritários (pontes, postes mais frágeis, cabos mais longos), gerados a partir da saída de console de `Grafo.printCaminhoAlternativo` e `Grafo.printPontosPrioritarios`.
+- **Testar Rede Desenhada (Painel de Testes Livres)**: abre um painel lateral sobre a rede que está desenhada no mapa (não substitui nada), com estas ações:
+  - **💥 Derrubar Nó Aleatório**: sorteia um vértice existente e alterna seu estado ativo/inativo (teste de estresse rápido).
+  - **Seletor de componente + Derrubar/Religar componente selecionado**: escolhe um vértice específico por nome e alterna seu estado.
+  - **🛣️ Auto: Subestação ➔ Mais Distante**: para cada subestação ativa, faz um BFS e calcula automaticamente o caminho alternativo até o poste/subestação mais distante alcançado (ignora casas como destino).
+  - **🛣️ Rota Específica (Origem ➔ Destino)**: pede origem e destino e mostra o caminho alternativo (Dijkstra) entre eles.
+  - **⚠️ Analisar Pontos Prioritários**: executa `Grafo.printPontosPrioritarios()` e mostra o resultado no log do painel.
+  - Sempre que um componente entra em falha (pelo painel ou por um clique no mapa com a ferramenta **Simular Falha**), o painel também exibe um **Relatório de Impacto**: pontos críticos (cuja queda fragmenta a rede em mais componentes), pontos em falha ordenados pelo grau de conexão (do mais frágil ao mais robusto) e os cabos afetados mais longos.
 
 **Algoritmos**
 
@@ -93,9 +103,12 @@ Na interface, todos os tipos visuais (subestação, poste e casa) são adicionad
 - Laranja: poste.
 - Azul: casa.
 - Cinza escuro: conexão normal.
-- Amarelo animado: energia em circulação.
-- Vermelho tracejado e raio: falha ou área sem energia.
-- Verde: AGM; laranja: pontes; a busca também mostra a numeração `#1`, `#2`, etc.
+- Amarelo animado: energia em circulação (a bolinha sempre se desloca da subestação em direção ao ponto mais distante, usando a distância em "saltos" calculada por `recalcularEnergia()`).
+- Vermelho tracejado e raio: falha ou área sem energia. O raio pulsa mais forte (maior opacidade e escala) quando o cabo toca diretamente um vértice inativo, e mais fraco quando está apenas sem energia por estar a jusante de uma falha.
+- Anel colorido ao redor do vértice/cabo: destaque do último algoritmo executado (verde para AGM, laranja para Pontes); a busca (BFS/DFS) também numera a ordem de visita com uma etiqueta `#1`, `#2`, etc.
+- Anel ciano: vértice selecionado manualmente (ex.: origem já escolhida no modo "Ligar Vértices").
+
+A **Legenda** (canto inferior direito, alternável pelo botão **Legenda**) não é estática: ela recalcula e mostra, em tempo real, a contagem de cada item — número de subestações, postes, casas, cabos, elementos com energia, elementos em falha, elementos destacados por algum algoritmo e quantos vértices têm numeração de busca (BFS/DFS) no momento.
 
 ## Algoritmos implementados
 
@@ -124,7 +137,7 @@ Se a fonte estiver inativa, todos os outros vértices são retornados como afeta
 
 #### Caminho alternativo
 
-Usa `lambda` como custo/distância e retorna a rota de menor soma de pesos. Só funciona com pesos não negativos, premissa válida para distâncias. Não há item de menu específico para ele; é disponibilizado pela API do `Grafo` e utilizado por cenários de análise.
+Usa `lambda` como custo/distância e retorna a rota de menor soma de pesos. Só funciona com pesos não negativos, premissa válida para distâncias. Não há item no menu **Algoritmos**; ele é acionado pelo painel **Testar Rede Desenhada** (botões "Rota Específica" e "Auto: Subestação ➔ Mais Distante") e também aparece na Etapa 4 do cenário automático.
 
 #### Fluxo máximo
 
@@ -177,8 +190,8 @@ Kruskal ordena os cabos por `lambda` crescente e adiciona um cabo apenas se ele 
 | `PintorConexoes` | Implementa `Painter<JXMapViewer>`. Guarda os dados visuais (`VerticeVis` e `ConexaoVis`), desenha nós/cabos/legenda, anima a energia e registra destaques, falhas e ordem de visita. |
 | `PintorConexoes.VerticeVis` | Estrutura visual pública com nome, posição geográfica e tipo do elemento. |
 | `PintorConexoes.ConexaoVis` | Estrutura interna com origem, destino e peso exibido para uma conexão. |
-| `GerenciadorTestes` | Controla o roteiro de teste automático, a janela de teste personalizado, o registro de falhas manuais e a geração do relatório de impacto. |
-| `ModeloTesteAutomatico` | Classe utilitária que cria uma rede pré-definida nas coordenadas da região-base e a conecta no grafo e no pintor. |
+| `GerenciadorTestes` | Controla as duas janelas de teste: o roteiro de 4 etapas do cenário automático (`iniciarTesteAutomatico`/`renderizarEstadoAtual`) e o painel de testes livres sobre a rede desenhada (`executarTestePersonalizado`), incluindo estresse aleatório, religar/derrubar por seleção, cálculo de rota (manual e automática) e a montagem do relatório de impacto (`gerarRelatorioDeFalha`: pontos críticos via contagem de componentes, ranking de fragilidade por grau, cabos mais longos afetados). Também sincroniza falhas aplicadas por clique direto no mapa (`registrarFalhaManualNoMapa`). Usa um interceptador de `System.out` (`capturarSaidaConsole`) para reaproveitar os métodos de impressão do `Grafo` dentro da interface gráfica. |
+| `ModeloTesteAutomatico` | Classe utilitária (métodos estáticos) que monta a rede fixa usada pelo cenário automático: 4 subestações (`Sub_Centro`, `Sub_Coplan`, `Sub_UFRB`, `Sub_Inocoop`) formando um anel de transmissão, ligadas a postes e casas distribuídos por bairros de Cruz das Almas, e recentraliza o mapa nessa região. |
 
 ### Métodos importantes da visualização
 

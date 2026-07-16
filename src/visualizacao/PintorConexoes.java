@@ -6,6 +6,7 @@ import org.jxmapviewer.viewer.GeoPosition;
 
 import java.awt.*;
 import java.awt.geom.Point2D;
+import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,6 +46,7 @@ public class PintorConexoes implements Painter<JXMapViewer> {
     private Set<String> arestasSemEnergia = new HashSet<>();
     private Set<String> verticesInativosManuais = new HashSet<>();
     private Map<String, Integer> distanciasSubestacao = new HashMap<>();
+    private Set<String> pontosCriticos = new HashSet<>();
 
     private Color corDestaque = Color.GREEN;
     private boolean mostrarApenasDestaques = false;
@@ -109,7 +111,25 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         this.verticesSemEnergia = semEnergiaV;
         this.arestasSemEnergia = semEnergiaA;
         this.verticesInativosManuais = inativos;
-        this.distanciasSubestacao = distancias; 
+        this.distanciasSubestacao = distancias;
+    }
+
+    public Set<String> getVerticesSemEnergia() {
+        return verticesSemEnergia;
+    }
+
+    /**
+     * Define quais postes ATIVOS são hoje pontos de articulação da rede (se caírem
+     * agora, isolam trechos inteiros). Recalculado automaticamente a cada mudança na
+     * rede por {@code VisualizadorRede.recalcularEnergia()} - não depende de nenhum
+     * botão, fica sempre visível e atualizado no mapa.
+     */
+    public void setPontosCriticos(Set<String> pontos) {
+        this.pontosCriticos = pontos;
+    }
+
+    public Set<String> getPontosCriticos() {
+        return pontosCriticos;
     }
 
     public void setCorDestaque(Color cor) {
@@ -140,6 +160,7 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         arestasSemEnergia.clear();
         verticesInativosManuais.clear();
         verticeDestaque = null;
+        pontosCriticos.clear();
     }
 
     public String getVerticeProximo(Point2D pontoTela, JXMapViewer map, int raioClique) {
@@ -329,6 +350,23 @@ public class PintorConexoes implements Painter<JXMapViewer> {
             g.setColor(Color.DARK_GRAY);
             g.drawOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
 
+            // Alerta visual de PONTO CRÍTICO: sempre visível para todo poste ativo cuja
+            // queda isolaria trechos da rede, sem precisar de nenhuma ação do usuário.
+            if (pontosCriticos.contains(nomeVertice)) {
+                float pulso = (float) (0.5 + 0.5 * Math.sin(progressoAnimacao * Math.PI * 6));
+                Composite compositeAnterior = g.getComposite();
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f + 0.5f * pulso));
+                g.setColor(new Color(255, 140, 0));
+                g.setStroke(new BasicStroke(3f));
+                int raioAlerta = tamanho / 2 + 10;
+                g.drawOval(x - raioAlerta, y - raioAlerta, raioAlerta * 2, raioAlerta * 2);
+                g.setComposite(compositeAnterior);
+
+                g.setColor(new Color(170, 85, 0));
+                g.setFont(new Font("Arial", Font.BOLD, 14));
+                g.drawString("⚠", x - 7, y - raioAlerta - 3);
+            }
+
             // Mantém apenas a renderização da caixinha com o número (#1, #2)
             // para as buscas BFS/DFS, ignorando os rótulos de nome fixos.
             if (ordemVisitaAlgoritmo.containsKey(nomeVertice)) {
@@ -369,6 +407,8 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         int margem = Math.round(12 * escala);
         int alturaLinha = Math.round(22 * escala);
         int padding = Math.round(10 * escala);
+        int alturaHeader = Math.round(28 * escala);
+        int raioCanto = Math.round(16 * escala);
         Font fonteTitulo = new Font("Arial", Font.BOLD, Math.round(13 * escala));
         Font fonteItem = new Font("Arial", Font.PLAIN, Math.round(12 * escala));
         int subestacoes = 0;
@@ -404,15 +444,22 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         int itensComFalha = verticesComFalha.size() + conexoesSemEnergia;
         int itensComEnergia = vertices.size() + arestas.size() - itensComFalha;
         int itensDestacados = verticesDestacados.size() + conexoesDestacadas;
+        int derrubadosManualmente = verticesInativosManuais.size();
+        int semEnergiaConsequencia = (verticesSemEnergia.size() - verticesInativosManuais.size()) + conexoesSemEnergia;
+        int verticeSelecionado = (verticeDestaque != null) ? 1 : 0;
+
         List<String> itens = new ArrayList<>();
         itens.add("Subestação (" + subestacoes + ")");
         itens.add("Poste (" + postes + ")");
         itens.add("Casa (" + casas + ")");
         itens.add("Cabo / conexão (" + arestas.size() + ")");
         itens.add("Energia em circulação (" + itensComEnergia + ")");
-        itens.add("Falha ou sem energia (" + itensComFalha + ")");
+        itens.add("Poste derrubado manualmente (" + derrubadosManualmente + ")");
+        itens.add("Sem energia por consequência (" + semEnergiaConsequencia + ")");
         itens.add("Destaque de algoritmo (" + itensDestacados + ")");
         itens.add("Número da visita (BFS/DFS) (" + ordemVisitaAlgoritmo.size() + ")");
+        itens.add("Ponto crítico: risco de isolar trechos (" + pontosCriticos.size() + ")");
+        itens.add("Vértice selecionado p/ ligação (" + verticeSelecionado + ")");
 
         String titulo = "Legenda  (" + (vertices.size() + arestas.size()) + " elementos)";
 
@@ -426,33 +473,55 @@ public class PintorConexoes implements Painter<JXMapViewer> {
         larguraTexto = Math.max(larguraTexto, g.getFontMetrics().stringWidth(titulo));
 
         int largura = larguraTexto + Math.round(50 * escala) + padding * 2;
-        int altura = padding * 2 + Math.round(20 * escala) + itens.size() * alturaLinha;
+        int altura = alturaHeader + itens.size() * alturaLinha + Math.round(6 * escala);
         int x = Math.max(margem, larguraTela - largura - margem);
         int y = Math.max(margem, alturaTela - altura - margem);
 
+        RoundRectangle2D corpo = new RoundRectangle2D.Float(x, y, largura, altura, raioCanto, raioCanto);
+
+        // Sombra suave para dar profundidade ao cartão
         Composite compositeOriginal = g.getComposite();
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.88f));
-        g.setColor(new Color(255, 255, 255));
-        g.fillRoundRect(x, y, largura, altura, Math.round(12 * escala), Math.round(12 * escala));
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.20f));
+        g.setColor(Color.BLACK);
+        g.fill(new RoundRectangle2D.Float(x + 3, y + 4, largura, altura, raioCanto, raioCanto));
+
+        // Corpo claro
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.92f));
+        g.setColor(Color.WHITE);
+        g.fill(corpo);
         g.setComposite(compositeOriginal);
+
+        // Faixas alternadas (zebra) e cabeçalho escuro, recortados à forma arredondada do cartão
+        Shape clipAnterior = g.getClip();
+        g.clip(corpo);
+        g.setColor(new Color(243, 245, 248));
+        for (int i = 0; i < itens.size(); i += 2) {
+            g.fillRect(x, y + alturaHeader + i * alturaLinha, largura, alturaLinha);
+        }
+        g.setColor(new Color(45, 49, 58));
+        g.fillRect(x, y, largura, alturaHeader);
+        g.setClip(clipAnterior);
+
+        // Contorno do cartão
         g.setColor(new Color(70, 70, 70));
         g.setStroke(new BasicStroke(Math.max(1f, escala)));
-        g.drawRoundRect(x, y, largura, altura, Math.round(12 * escala), Math.round(12 * escala));
+        g.draw(corpo);
 
         g.setFont(fonteTitulo);
-        g.setColor(Color.DARK_GRAY);
-        int textoX = x + padding + Math.round(34 * escala);
-        int linhaY = y + padding + g.getFontMetrics().getAscent();
+        g.setColor(Color.WHITE);
+        int textoX = x + padding;
+        int linhaY = y + (alturaHeader + g.getFontMetrics().getAscent()) / 2 - Math.round(2 * escala);
         g.drawString(titulo, textoX, linhaY);
 
         g.setFont(fonteItem);
         for (int i = 0; i < itens.size(); i++) {
-            int centroY = y + padding + Math.round(20 * escala) + i * alturaLinha + alturaLinha / 2;
+            int centroY = y + alturaHeader + i * alturaLinha + alturaLinha / 2;
             int simboloX = x + padding + Math.round(10 * escala);
             desenharSimboloLegenda(g, i, simboloX, centroY, escala);
+            int textoItemX = x + padding + Math.round(34 * escala);
             int baseTexto = centroY + (g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent()) / 2;
-            g.setColor(Color.DARK_GRAY);
-            g.drawString(itens.get(i), textoX, baseTexto);
+            g.setColor(new Color(40, 40, 40));
+            g.drawString(itens.get(i), textoItemX, baseTexto);
         }
     }
 
@@ -483,18 +552,28 @@ public class PintorConexoes implements Painter<JXMapViewer> {
                 g.drawOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
                 break;
             case 5:
+                // Poste derrubado manualmente: halo preto atrás do círculo vermelho
+                g.setColor(Color.BLACK);
+                g.fillOval(x - tamanho, y - tamanho, tamanho * 2, tamanho * 2);
+                g.setColor(Color.RED);
+                g.fillOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                g.setColor(Color.DARK_GRAY);
+                g.drawOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                break;
+            case 6:
+                // Sem energia por consequência: cabo tracejado + raio + poste vermelho, sem halo
                 g.setColor(Color.RED);
                 g.setStroke(new BasicStroke(Math.max(2f, 3 * escala), BasicStroke.CAP_BUTT,
                         BasicStroke.JOIN_MITER, 10, new float[] { 6 * escala, 4 * escala }, 0));
                 g.drawLine(x - tamanho, y, x + tamanho, y);
                 desenharRaioFalha(g, x, y, 1f, escala * 0.65f);
                 break;
-            case 6:
+            case 7:
                 g.setColor(corDestaque);
                 g.setStroke(new BasicStroke(Math.max(3f, 5 * escala)));
                 g.drawLine(x - tamanho, y, x + tamanho, y);
                 break;
-            case 7:
+            case 8:
                 g.setColor(new Color(245, 245, 245));
                 int larguraCaixa = Math.round(23 * escala);
                 int alturaCaixa = Math.round(15 * escala);
@@ -503,6 +582,23 @@ public class PintorConexoes implements Painter<JXMapViewer> {
                 g.drawRoundRect(x - larguraCaixa / 2, y - alturaCaixa / 2, larguraCaixa, alturaCaixa, 4, 4);
                 g.setFont(new Font("Arial", Font.BOLD, Math.round(9 * escala)));
                 g.drawString("#1", x - Math.round(7 * escala), y + Math.round(3 * escala));
+                break;
+            case 9:
+                g.setColor(new Color(255, 140, 0));
+                g.setStroke(new BasicStroke(Math.max(2f, 3 * escala)));
+                g.drawOval(x - tamanho, y - tamanho, tamanho * 2, tamanho * 2);
+                g.setColor(new Color(170, 85, 0));
+                g.setFont(new Font("Arial", Font.BOLD, Math.round(11 * escala)));
+                g.drawString("⚠", x - Math.round(5 * escala), y + Math.round(4 * escala));
+                break;
+            case 10:
+                // Vértice selecionado para ligação: halo ciano sobre um poste genérico
+                g.setColor(Color.CYAN);
+                g.fillOval(x - tamanho, y - tamanho, tamanho * 2, tamanho * 2);
+                g.setColor(Color.ORANGE);
+                g.fillOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                g.setColor(Color.DARK_GRAY);
+                g.drawOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
                 break;
             default:
                 break;

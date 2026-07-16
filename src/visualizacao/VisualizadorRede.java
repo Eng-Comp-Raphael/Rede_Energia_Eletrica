@@ -50,6 +50,12 @@ public class VisualizadorRede extends JFrame {
     private TipoVertice tipoVerticeSelecionado = TipoVertice.POSTE;
     private JComboBox<String> comboVisualizacao;
 
+    // --- Alerta lateral piscante de falha crítica (substitui a antiga mensagem popup) ---
+    private JLabel labelAlertaCritico;
+    private Timer timerAlertaCritico;
+    private boolean piscaAlertaCriticoAceso = false;
+    private Runnable acaoAlertaCritico;
+
     public VisualizadorRede() {
         super("Simulador de Distribuição de Rede");
         setSize(1300, 750);
@@ -86,6 +92,8 @@ public class VisualizadorRede extends JFrame {
 
         JButton btnArquivo = new JButton("📁 Arquivo ▼");
         JButton btnTestes = new JButton("🧪 Testes ▼");
+        JButton btnPainelTestes = new JButton("🛠️ Painel de Testes");
+        JButton btnRelatorio = new JButton("📄 Relatório");
         JToggleButton btnNavegar = new JToggleButton("🖐 Navegar", true);
         JToggleButton btnCriarVertice = new JToggleButton("📍 Add: Poste ▼");
         JToggleButton btnLigar = new JToggleButton("🔗 Ligar Vértices");
@@ -145,6 +153,8 @@ public class VisualizadorRede extends JFrame {
 
         itemTesteAuto.addActionListener(e -> gerenciadorTestes.iniciarTesteAutomatico());
         itemTestePers.addActionListener(e -> gerenciadorTestes.executarTestePersonalizado());
+        btnPainelTestes.addActionListener(e -> gerenciadorTestes.executarTestePersonalizado());
+        btnRelatorio.addActionListener(e -> gerenciadorTestes.abrirRelatorioCompleto());
 
         popupTestes.add(itemTesteAuto);
         popupTestes.add(itemTestePers);
@@ -211,10 +221,7 @@ public class VisualizadorRede extends JFrame {
         });
         btnLigar.addActionListener(e -> limparSelecao(Modo.LIGAR_VERTICES));
         btnRemover.addActionListener(e -> limparSelecao(Modo.REMOVER_VERTICE));
-        btnFalha.addActionListener(e -> {
-            limparSelecao(Modo.ALTERNAR_FALHA);
-            gerenciadorTestes.executarTestePersonalizado();
-        });
+        btnFalha.addActionListener(e -> limparSelecao(Modo.ALTERNAR_FALHA));
 
         btnAlgoritmos.addActionListener(e -> popupAlgoritmos.show(btnAlgoritmos, 0, btnAlgoritmos.getHeight()));
         btnAnimacao.addActionListener(e -> {
@@ -231,6 +238,8 @@ public class VisualizadorRede extends JFrame {
 
         toolBar.add(btnArquivo);
         toolBar.add(btnTestes);
+        toolBar.add(btnPainelTestes);
+        toolBar.add(btnRelatorio);
         toolBar.addSeparator();
         toolBar.add(btnNavegar);
         toolBar.addSeparator();
@@ -361,6 +370,55 @@ public class VisualizadorRede extends JFrame {
             mapViewer.repaint();
         });
         timerAnimacao.start();
+
+        // ==========================================
+        // ALERTA LATERAL DE FALHA CRÍTICA (ícone piscante, sem popup)
+        // ==========================================
+        labelAlertaCritico = new JLabel("⚠", SwingConstants.CENTER);
+        labelAlertaCritico.setFont(new Font("Arial", Font.BOLD, 26));
+        labelAlertaCritico.setOpaque(true);
+        labelAlertaCritico.setBackground(new Color(255, 220, 190));
+        labelAlertaCritico.setForeground(new Color(120, 40, 0));
+        labelAlertaCritico.setPreferredSize(new Dimension(46, 46));
+        labelAlertaCritico.setToolTipText("Falha crítica na rede! Clique para ver o relatório.");
+        labelAlertaCritico.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        labelAlertaCritico.setVisible(false);
+        labelAlertaCritico.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                desativarAlertaCritico();
+                if (acaoAlertaCritico != null) {
+                    acaoAlertaCritico.run();
+                }
+            }
+        });
+
+        JPanel faixaLateral = new JPanel(new BorderLayout());
+        faixaLateral.setOpaque(false);
+        faixaLateral.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 8));
+        faixaLateral.add(labelAlertaCritico, BorderLayout.CENTER);
+        add(faixaLateral, BorderLayout.EAST);
+
+        timerAlertaCritico = new Timer(500, e -> {
+            piscaAlertaCriticoAceso = !piscaAlertaCriticoAceso;
+            labelAlertaCritico.setBackground(piscaAlertaCriticoAceso ? new Color(255, 90, 0) : new Color(255, 220, 190));
+        });
+    }
+
+    /** Acende o ícone piscante lateral avisando uma falha crítica; ao clicar, executa a ação informada. */
+    public void ativarAlertaCritico(Runnable aoClicar) {
+        this.acaoAlertaCritico = aoClicar;
+        labelAlertaCritico.setVisible(true);
+        if (!timerAlertaCritico.isRunning()) {
+            timerAlertaCritico.start();
+        }
+    }
+
+    /** Apaga o ícone piscante lateral (chamado quando o alerta é clicado/reconhecido). */
+    public void desativarAlertaCritico() {
+        timerAlertaCritico.stop();
+        labelAlertaCritico.setVisible(false);
+        labelAlertaCritico.setBackground(new Color(255, 220, 190));
     }
 
     private void limparSelecao(Modo novoModo) {
@@ -537,6 +595,12 @@ public class VisualizadorRede extends JFrame {
 
         // NOVO: Passamos o mapa de distâncias como parâmetro
         pintorConexoes.setEstadoEnergia(semEnergiaV, semEnergiaA, inativosManuais, distancias);
+
+        // Recalcula automaticamente, a cada mudança na rede, quais postes ATIVOS são
+        // pontos de articulação (se caírem agora, isolam trechos da rede). Não depende
+        // de nenhum botão: fica sempre visível e atualizado no mapa.
+        pintorConexoes.setPontosCriticos(new HashSet<>(grafoRede.encontrarPontosArticulacao()));
+
         mapViewer.repaint();
     }
 
