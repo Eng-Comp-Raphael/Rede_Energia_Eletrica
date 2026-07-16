@@ -1,7 +1,7 @@
 package visualizacao;
 
-import org.jxmapviewer.viewer.GeoPosition;
 import estruturaGrafo.Grafo;
+import estruturaGrafo.Aresta;
 import visualizacao.PintorConexoes.TipoVertice;
 
 import javax.swing.*;
@@ -9,9 +9,13 @@ import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 public class GerenciadorTestes {
 
@@ -29,6 +33,7 @@ public class GerenciadorTestes {
     // --- Componentes do Teste Personalizado ---
     private JDialog janelaPersonalizada;
     private JTextArea logPersonalizado;
+    private JComboBox<String> seletorComponente;
 
     public GerenciadorTestes(VisualizadorRede interfacePrincipal) {
         this.interfacePrincipal = interfacePrincipal;
@@ -172,6 +177,7 @@ public class GerenciadorTestes {
         }
         
         logPersonalizado.setText("Pronto para simular a rede atual.\nSelecione uma ação acima ou clique em um poste no mapa com a ferramenta de falha.");
+        atualizarComponentesDisponiveis();
         posicionarJanela(janelaPersonalizada);
         janelaPersonalizada.setVisible(true);
     }
@@ -184,16 +190,22 @@ public class GerenciadorTestes {
         janelaPersonalizada.setAlwaysOnTop(true);
 
         // Painel Superior com fundo ESCURO (padrão mantido)
-        JPanel painelAcoes = new JPanel(new GridLayout(4, 1, 5, 5));
+        JPanel painelAcoes = new JPanel(new GridLayout(7, 1, 5, 5));
         painelAcoes.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         painelAcoes.setBackground(Color.DARK_GRAY);
 
         JButton btnEstresse = new JButton("💥 Derrubar Nó Aleatório");
+        seletorComponente = new JComboBox<>();
+        JButton btnDerrubarSelecionado = new JButton("Derrubar componente selecionado");
+        JButton btnReligarSelecionado = new JButton("Religar componente selecionado");
         JButton btnCaminhoAuto = new JButton("🛣️ Auto: Subestação ➔ Mais Distante"); // NOVO BOTÃO
         JButton btnCaminho = new JButton("🛣️ Rota Específica (Origem ➔ Destino)");
         JButton btnPrioridade = new JButton("⚠️ Analisar Pontos Prioritários");
 
         painelAcoes.add(btnEstresse);
+        painelAcoes.add(seletorComponente);
+        painelAcoes.add(btnDerrubarSelecionado);
+        painelAcoes.add(btnReligarSelecionado);
         painelAcoes.add(btnCaminhoAuto);
         painelAcoes.add(btnCaminho);
         painelAcoes.add(btnPrioridade);
@@ -223,8 +235,14 @@ public class GerenciadorTestes {
             
             String acao = !estadoAtual ? "RELIGADO" : "DERRUBADO";
             logPersonalizado.append("\n\n[ESTRESSE] Componente '" + noSorteado + "' foi " + acao + "!");
+            if (estadoAtual) {
+                logPersonalizado.append("\n\n" + gerarRelatorioDeFalha());
+            }
             logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
         });
+
+        btnDerrubarSelecionado.addActionListener(e -> alterarFalhaDoComponenteSelecionado(false));
+        btnReligarSelecionado.addActionListener(e -> alterarFalhaDoComponenteSelecionado(true));
 
         // NOVO: Cálculo Automático (Subestação -> Fim da Linha)
         // NOVO: Cálculo Automático (Todas as Subestações -> Poste Mais Distante)
@@ -300,6 +318,26 @@ public class GerenciadorTestes {
     /**
      * Chamado pelo VisualizadorRede quando o usuário clica com a ferramenta de Simular Falha
      */
+    private void alterarFalhaDoComponenteSelecionado(boolean religado) {
+        String vertice = (String) seletorComponente.getSelectedItem();
+        if (vertice == null) {
+            return;
+        }
+
+        grafo.setPosteAtivo(vertice, religado);
+        interfacePrincipal.recalcularEnergia();
+        registrarFalhaManualNoMapa(vertice, religado);
+    }
+
+    private void atualizarComponentesDisponiveis() {
+        String selecionado = (String) seletorComponente.getSelectedItem();
+        seletorComponente.removeAllItems();
+        for (String vertice : pintor.getVertices().keySet()) {
+            seletorComponente.addItem(vertice);
+        }
+        seletorComponente.setSelectedItem(selecionado);
+    }
+
     public void registrarFalhaManualNoMapa(String vertice, boolean religado) {
         if (janelaPersonalizada == null || !janelaPersonalizada.isVisible()) {
             executarTestePersonalizado(); // Garante que a janela abra se o usuário clicou direto no mapa
@@ -309,11 +347,124 @@ public class GerenciadorTestes {
         logPersonalizado.append("\n\n----------------------------------");
         logPersonalizado.append("\n[MAPA] Componente '" + vertice + "' foi " + acao + "!");
         
-        // Atualiza relatórios de prioridades automaticamente simulando o teste padrão
-        String prioridades = capturarSaidaConsole(() -> grafo.printPontosPrioritarios());
-        logPersonalizado.append("\n\n[RELATÓRIO DE IMPACTO]\n" + prioridades);
+        if (!religado) {
+            logPersonalizado.append("\n\n" + gerarRelatorioDeFalha());
+        }
         
         logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
+    }
+
+    /**
+     * Relatório enxuto: relaciona somente itens diretamente atingidos por uma falha.
+     * Assim, a análise não repete toda a rede nem lista prioridades sem relação com o
+     * componente derrubado.
+     */
+    private String gerarRelatorioDeFalha() {
+        Set<String> componentesEmFalha = new HashSet<>();
+        for (String id : pintor.getVertices().keySet()) {
+            if (!grafo.posteAtivo(id)) {
+                componentesEmFalha.add(id);
+            }
+        }
+
+        if (componentesEmFalha.isEmpty()) {
+            return "[RELATÓRIO DE IMPACTO]\nNenhum componente está em falha.";
+        }
+
+        List<Aresta<String>> cabosAfetados = new ArrayList<>();
+        Map<String, Integer> grau = new HashMap<>();
+        for (String id : pintor.getVertices().keySet()) {
+            grau.put(id, 0);
+        }
+        for (Aresta<String> cabo : grafo.getArestas()) {
+            String origem = cabo.getU().getNome();
+            String destino = cabo.getV().getNome();
+            if (cabo.getAtivo()) {
+                grau.merge(origem, 1, Integer::sum);
+                grau.merge(destino, 1, Integer::sum);
+            }
+            if (!cabo.getAtivo() || componentesEmFalha.contains(origem) || componentesEmFalha.contains(destino)) {
+                cabosAfetados.add(cabo);
+            }
+        }
+
+        StringBuilder relatorio = new StringBuilder("[RELATÓRIO DE IMPACTO]\n");
+        List<String> pontosCriticos = new ArrayList<>();
+        for (String id : componentesEmFalha) {
+            if (ehPontoCritico(id)) {
+                pontosCriticos.add(id);
+            }
+        }
+        pontosCriticos.sort(String::compareTo);
+        if (!pontosCriticos.isEmpty()) {
+            relatorio.append("\nPontos críticos em falha:\n");
+            for (String id : pontosCriticos) {
+                relatorio.append("• ").append(id).append('\n');
+            }
+        }
+
+        List<String> fragilizados = new ArrayList<>(componentesEmFalha);
+        fragilizados.sort(Comparator.comparingInt(id -> grau.getOrDefault(id, 0)));
+        relatorio.append("\nPontos mais frágeis em falha:\n");
+        for (String id : fragilizados) {
+            relatorio.append("• ").append(id).append(" (grau ")
+                    .append(grau.getOrDefault(id, 0)).append(")\n");
+        }
+
+        cabosAfetados.sort((a, b) -> Integer.compare(b.getLambda(), a.getLambda()));
+        if (!cabosAfetados.isEmpty()) {
+            relatorio.append("\nCabos mais longos afetados:\n");
+            for (Aresta<String> cabo : cabosAfetados) {
+                relatorio.append("• [").append(cabo.getU().getNome()).append("] - [")
+                        .append(cabo.getV().getNome()).append("] (")
+                        .append(cabo.getLambda()).append("m)\n");
+            }
+        }
+        return relatorio.toString();
+    }
+
+    /** Verifica se retirar o vértice aumenta o número de componentes da rede. */
+    private boolean ehPontoCritico(String candidato) {
+        return contarComponentes(null) < contarComponentes(candidato);
+    }
+
+    private int contarComponentes(String verticeIgnorado) {
+        Map<String, List<String>> adjacencias = new HashMap<>();
+        for (String id : pintor.getVertices().keySet()) {
+            if (!id.equals(verticeIgnorado)) {
+                adjacencias.put(id, new ArrayList<>());
+            }
+        }
+        for (Aresta<String> cabo : grafo.getArestas()) {
+            if (!cabo.getAtivo()) {
+                continue;
+            }
+            String origem = cabo.getU().getNome();
+            String destino = cabo.getV().getNome();
+            if (adjacencias.containsKey(origem) && adjacencias.containsKey(destino)) {
+                adjacencias.get(origem).add(destino);
+                adjacencias.get(destino).add(origem);
+            }
+        }
+
+        Set<String> visitados = new HashSet<>();
+        int componentes = 0;
+        for (String origem : adjacencias.keySet()) {
+            if (!visitados.add(origem)) {
+                continue;
+            }
+            componentes++;
+            List<String> pendentes = new ArrayList<>();
+            pendentes.add(origem);
+            for (int i = 0; i < pendentes.size(); i++) {
+                for (String vizinho : adjacencias.get(pendentes.get(i))) {
+                    if (visitados.add(vizinho)) {
+                        pendentes.add(vizinho);
+                    }
+                }
+            }
+        }
+        return componentes;
     }
 
     // ==========================================

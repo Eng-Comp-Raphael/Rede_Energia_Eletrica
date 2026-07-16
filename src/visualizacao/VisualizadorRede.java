@@ -94,6 +94,7 @@ public class VisualizadorRede extends JFrame {
         JButton btnAlgoritmos = new JButton("⚙️ Algoritmos ▼");
         JToggleButton btnAnimacao = new JToggleButton("⚡ Pausar");
         JToggleButton btnAutoConectar = new JToggleButton("🔗 Auto-Conectar", true); // NOVO
+        JToggleButton btnLegenda = new JToggleButton("☰ Legenda", true);
 
         comboVisualizacao = new JComboBox<>(new String[] { "Visão: Grafo Completo", "Visão: Resultado de Busca" });
         comboVisualizacao.addActionListener(e -> {
@@ -199,6 +200,10 @@ public class VisualizadorRede extends JFrame {
         popupAlgoritmos.add(itemLimpar);
 
         btnAutoConectar.addActionListener(e -> autoConectarAtivado = btnAutoConectar.isSelected());
+        btnLegenda.addActionListener(e -> {
+            pintorConexoes.setMostrarLegenda(btnLegenda.isSelected());
+            mapViewer.repaint();
+        });
         btnNavegar.addActionListener(e -> limparSelecao(Modo.NAVEGAR));
         btnCriarVertice.addActionListener(e -> {
             limparSelecao(Modo.CRIAR_VERTICE);
@@ -206,7 +211,10 @@ public class VisualizadorRede extends JFrame {
         });
         btnLigar.addActionListener(e -> limparSelecao(Modo.LIGAR_VERTICES));
         btnRemover.addActionListener(e -> limparSelecao(Modo.REMOVER_VERTICE));
-        btnFalha.addActionListener(e -> limparSelecao(Modo.ALTERNAR_FALHA));
+        btnFalha.addActionListener(e -> {
+            limparSelecao(Modo.ALTERNAR_FALHA);
+            gerenciadorTestes.executarTestePersonalizado();
+        });
 
         btnAlgoritmos.addActionListener(e -> popupAlgoritmos.show(btnAlgoritmos, 0, btnAlgoritmos.getHeight()));
         btnAnimacao.addActionListener(e -> {
@@ -240,6 +248,8 @@ public class VisualizadorRede extends JFrame {
         toolBar.add(comboVisualizacao);
         toolBar.addSeparator();
         toolBar.add(btnAnimacao);
+        toolBar.addSeparator();
+        toolBar.add(btnLegenda);
         add(toolBar, BorderLayout.NORTH);
 
         // ==========================================

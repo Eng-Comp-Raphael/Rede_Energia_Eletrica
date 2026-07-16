@@ -48,6 +48,7 @@ public class PintorConexoes implements Painter<JXMapViewer> {
 
     private Color corDestaque = Color.GREEN;
     private boolean mostrarApenasDestaques = false;
+    private boolean mostrarLegenda = true;
 
     public PintorConexoes(JXMapViewer mapa) {
         this.mapa = mapa;
@@ -117,6 +118,10 @@ public class PintorConexoes implements Painter<JXMapViewer> {
 
     public void setMostrarApenasDestaques(boolean mostrar) {
         this.mostrarApenasDestaques = mostrar;
+    }
+
+    public void setMostrarLegenda(boolean mostrar) {
+        this.mostrarLegenda = mostrar;
     }
 
     public void limparDestaquesAlgoritmos() {
@@ -346,7 +351,168 @@ public class PintorConexoes implements Painter<JXMapViewer> {
                 g.setFont(new Font("Arial", Font.BOLD, 10));
             }
         }
+
+        if (mostrarLegenda) {
+            desenharLegenda(g, w, h);
+        }
         g.dispose();
+    }
+
+    /**
+     * Exibe uma referência visual dos elementos desenhados sobre o mapa. A escala
+     * acompanha o tamanho do componente para a legenda continuar legível sem ocupar
+     * uma parte excessiva da tela em janelas menores.
+     */
+    private void desenharLegenda(Graphics2D g, int larguraTela, int alturaTela) {
+        float escala = Math.max(0.72f, Math.min(1.0f,
+                Math.min(larguraTela / 1300f, alturaTela / 750f)));
+        int margem = Math.round(12 * escala);
+        int alturaLinha = Math.round(22 * escala);
+        int padding = Math.round(10 * escala);
+        Font fonteTitulo = new Font("Arial", Font.BOLD, Math.round(13 * escala));
+        Font fonteItem = new Font("Arial", Font.PLAIN, Math.round(12 * escala));
+        int subestacoes = 0;
+        int postes = 0;
+        int casas = 0;
+        for (VerticeVis vertice : vertices.values()) {
+            switch (vertice.tipo) {
+                case SUBESTACAO:
+                    subestacoes++;
+                    break;
+                case POSTE:
+                    postes++;
+                    break;
+                case CASA:
+                    casas++;
+                    break;
+            }
+        }
+
+        int conexoesDestacadas = 0;
+        int conexoesSemEnergia = 0;
+        for (ConexaoVis aresta : arestas) {
+            String id = aresta.origem + "-" + aresta.destino;
+            String idInverso = aresta.destino + "-" + aresta.origem;
+            if (arestasDestacadas.contains(id) || arestasDestacadas.contains(idInverso))
+                conexoesDestacadas++;
+            if (arestasSemEnergia.contains(id) || arestasSemEnergia.contains(idInverso))
+                conexoesSemEnergia++;
+        }
+
+        Set<String> verticesComFalha = new HashSet<>(verticesSemEnergia);
+        verticesComFalha.addAll(verticesInativosManuais);
+        int itensComFalha = verticesComFalha.size() + conexoesSemEnergia;
+        int itensComEnergia = vertices.size() + arestas.size() - itensComFalha;
+        int itensDestacados = verticesDestacados.size() + conexoesDestacadas;
+        List<String> itens = new ArrayList<>();
+        itens.add("Subestação (" + subestacoes + ")");
+        itens.add("Poste (" + postes + ")");
+        itens.add("Casa (" + casas + ")");
+        itens.add("Cabo / conexão (" + arestas.size() + ")");
+        itens.add("Energia em circulação (" + itensComEnergia + ")");
+        itens.add("Falha ou sem energia (" + itensComFalha + ")");
+        itens.add("Destaque de algoritmo (" + itensDestacados + ")");
+        itens.add("Número da visita (BFS/DFS) (" + ordemVisitaAlgoritmo.size() + ")");
+
+        String titulo = "Legenda  (" + (vertices.size() + arestas.size()) + " elementos)";
+
+        g.setFont(fonteItem);
+        FontMetrics metricas = g.getFontMetrics();
+        int larguraTexto = metricas.stringWidth("Energia em circulação");
+        for (String item : itens)
+            larguraTexto = Math.max(larguraTexto, metricas.stringWidth(item));
+
+        g.setFont(fonteTitulo);
+        larguraTexto = Math.max(larguraTexto, g.getFontMetrics().stringWidth(titulo));
+
+        int largura = larguraTexto + Math.round(50 * escala) + padding * 2;
+        int altura = padding * 2 + Math.round(20 * escala) + itens.size() * alturaLinha;
+        int x = Math.max(margem, larguraTela - largura - margem);
+        int y = Math.max(margem, alturaTela - altura - margem);
+
+        Composite compositeOriginal = g.getComposite();
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.88f));
+        g.setColor(new Color(255, 255, 255));
+        g.fillRoundRect(x, y, largura, altura, Math.round(12 * escala), Math.round(12 * escala));
+        g.setComposite(compositeOriginal);
+        g.setColor(new Color(70, 70, 70));
+        g.setStroke(new BasicStroke(Math.max(1f, escala)));
+        g.drawRoundRect(x, y, largura, altura, Math.round(12 * escala), Math.round(12 * escala));
+
+        g.setFont(fonteTitulo);
+        g.setColor(Color.DARK_GRAY);
+        int textoX = x + padding + Math.round(34 * escala);
+        int linhaY = y + padding + g.getFontMetrics().getAscent();
+        g.drawString(titulo, textoX, linhaY);
+
+        g.setFont(fonteItem);
+        for (int i = 0; i < itens.size(); i++) {
+            int centroY = y + padding + Math.round(20 * escala) + i * alturaLinha + alturaLinha / 2;
+            int simboloX = x + padding + Math.round(10 * escala);
+            desenharSimboloLegenda(g, i, simboloX, centroY, escala);
+            int baseTexto = centroY + (g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent()) / 2;
+            g.setColor(Color.DARK_GRAY);
+            g.drawString(itens.get(i), textoX, baseTexto);
+        }
+    }
+
+    private void desenharSimboloLegenda(Graphics2D g, int indice, int x, int y, float escala) {
+        int tamanho = Math.round(12 * escala);
+        switch (indice) {
+            case 0:
+                g.setColor(new Color(138, 43, 226));
+                g.fillOval(x - tamanho, y - tamanho, tamanho * 2, tamanho * 2);
+                break;
+            case 1:
+                g.setColor(Color.ORANGE);
+                g.fillOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                break;
+            case 2:
+                g.setColor(new Color(30, 144, 255));
+                g.fillOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                break;
+            case 3:
+                g.setColor(Color.DARK_GRAY);
+                g.setStroke(new BasicStroke(Math.max(2f, 3 * escala)));
+                g.drawLine(x - tamanho, y, x + tamanho, y);
+                break;
+            case 4:
+                g.setColor(Color.YELLOW);
+                g.fillOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                g.setColor(Color.DARK_GRAY);
+                g.drawOval(x - tamanho / 2, y - tamanho / 2, tamanho, tamanho);
+                break;
+            case 5:
+                g.setColor(Color.RED);
+                g.setStroke(new BasicStroke(Math.max(2f, 3 * escala), BasicStroke.CAP_BUTT,
+                        BasicStroke.JOIN_MITER, 10, new float[] { 6 * escala, 4 * escala }, 0));
+                g.drawLine(x - tamanho, y, x + tamanho, y);
+                desenharRaioFalha(g, x, y, 1f, escala * 0.65f);
+                break;
+            case 6:
+                g.setColor(corDestaque);
+                g.setStroke(new BasicStroke(Math.max(3f, 5 * escala)));
+                g.drawLine(x - tamanho, y, x + tamanho, y);
+                break;
+            case 7:
+                g.setColor(new Color(245, 245, 245));
+                int larguraCaixa = Math.round(23 * escala);
+                int alturaCaixa = Math.round(15 * escala);
+                g.fillRoundRect(x - larguraCaixa / 2, y - alturaCaixa / 2, larguraCaixa, alturaCaixa, 4, 4);
+                g.setColor(Color.DARK_GRAY);
+                g.drawRoundRect(x - larguraCaixa / 2, y - alturaCaixa / 2, larguraCaixa, alturaCaixa, 4, 4);
+                g.setFont(new Font("Arial", Font.BOLD, Math.round(9 * escala)));
+                g.drawString("#1", x - Math.round(7 * escala), y + Math.round(3 * escala));
+                break;
+            default:
+                break;
+        }
+        if (indice <= 2) {
+            g.setColor(Color.DARK_GRAY);
+            g.setStroke(new BasicStroke(Math.max(1f, escala)));
+            int raio = indice == 0 ? tamanho : tamanho / 2;
+            g.drawOval(x - raio, y - raio, raio * 2, raio * 2);
+        }
     }
 
     private static class ConexaoVis {

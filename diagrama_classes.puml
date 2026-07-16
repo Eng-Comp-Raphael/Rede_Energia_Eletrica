@@ -1,0 +1,234 @@
+@startuml
+' Diagrama de classes do projeto RedeDeEnergia.
+' Para gerar uma imagem: abra este arquivo em uma extensão PlantUML do VS Code
+' ou use: java -jar plantuml.jar diagrama_classes.puml
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+
+title Diagrama de Classes — Simulador de Rede de Energia
+
+package "Inicialização" #FFF2CC {
+  class App {
+    +main(args: String[]): void
+  }
+}
+
+package "estruturaGrafo" #D9EAF7 {
+  class "Grafo<TIPO>" as Grafo {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: ArrayList<Aresta<TIPO>>
+    -fontePrincipal: TIPO
+    -ultimoVerticeAdicionado: TIPO
+    +addVertice(id: TIPO): void
+    +addVerticeAutoConectado(...): void
+    +addAresta(origem: TIPO, destino: TIPO, lambda: int): void
+    +removerVertice(id: TIPO): void
+    +setPosteAtivo(id: TIPO, ativo: boolean): void
+    +bfs(inicio: TIPO): List<TIPO>
+    +dfs(inicio: TIPO): List<TIPO>
+    +AGM(original: Grafo<TIPO>): Grafo<TIPO>
+    +fluxoMaximo(origem: TIPO, destino: TIPO): int
+    +encontrarPontes(): List<Aresta<TIPO>>
+    +caminhoAlternativo(...): List<TIPO>
+  }
+
+  class "Nodo<TIPO>" as Nodo {
+    -nome: TIPO
+    -esquerda: Nodo<TIPO>
+    -direita: Nodo<TIPO>
+    -ativo: boolean
+    +getAtivo(): boolean
+    +setAtivo(ativo: boolean): void
+  }
+
+  class "Vertice<TIPO>" as Vertice {
+    +add(nome: TIPO): void
+    +printInsert(raiz: Nodo<TIPO>): void
+    +printOrdem(raiz: Nodo<TIPO>): void
+  }
+
+  class "Aresta<TIPO>" as Aresta {
+    -u: Vertice<TIPO>
+    -v: Vertice<TIPO>
+    -lambda: int
+    -ativo: boolean
+    +getLambda(): int
+    +getAtivo(): boolean
+    +setAtivo(ativo: boolean): void
+  }
+
+  class "ConjuntoDisjunto<TIPO>" as ConjuntoDisjunto {
+    -pai: Map<TIPO, TIPO>
+    -rank: Map<TIPO, Integer>
+    +criarConjunto(elemento: TIPO): void
+    +encontrar(elemento: TIPO): TIPO
+    +unir(a: TIPO, b: TIPO): boolean
+  }
+}
+
+package "algoritmos" #E2F0D9 {
+  class "BFS<TIPO>" as BFS {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +executar(inicio: TIPO): List<TIPO>
+  }
+  class "DFS<TIPO>" as DFS {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +executar(inicio: TIPO): List<TIPO>
+  }
+  class "AreasAfetadas<TIPO>" as AreasAfetadas {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +executar(fonte: TIPO): List<TIPO>
+  }
+  class "CaminhoAlternativo<TIPO>" as CaminhoAlternativo {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +executar(origem: TIPO, destino: TIPO): List<TIPO>
+  }
+  class "FluxoMaximo<TIPO>" as FluxoMaximo {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +executar(origem: TIPO, destino: TIPO): int
+  }
+  class "Pontes<TIPO>" as Pontes {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +executar(): List<Aresta<TIPO>>
+  }
+  class "PontosPrioritarios<TIPO>" as PontosPrioritarios {
+    -vertice: Map<TIPO, Vertice<TIPO>>
+    -aresta: List<Aresta<TIPO>>
+    +pontesCriticas(): List<Aresta<TIPO>>
+    +postesMaisFragilizados(topN: int): List<TIPO>
+    +cabosMaisLongos(topN: int): List<Aresta<TIPO>>
+  }
+  class "AGM<TIPO>" as AGM {
+    +executar(vertices, arestas): List<Aresta<TIPO>>
+  }
+}
+
+package "visualizacao" #FCE4D6 {
+  class VisualizadorRede {
+    -mapViewer: JXMapViewer
+    -pintorConexoes: PintorConexoes
+    -grafoRede: Grafo<String>
+    -modoAtual: Modo
+    -tipoVerticeSelecionado: TipoVertice
+    +recalcularEnergia(): void
+    +getGrafoRede(): Grafo<String>
+    +getPintorConexoes(): PintorConexoes
+    +getMapViewer(): JXMapViewer
+  }
+
+  enum Modo {
+    NAVEGAR
+    CRIAR_VERTICE
+    LIGAR_VERTICES
+    REMOVER_VERTICE
+    ALTERNAR_FALHA
+  }
+
+  class PintorConexoes {
+    -vertices: Map<String, VerticeVis>
+    -arestas: List<ConexaoVis>
+    -mapa: JXMapViewer
+    +adicionarVertice(...): void
+    +adicionarAresta(...): void
+    +removerVertice(nome: String): void
+    +setEstadoEnergia(...): void
+    +paint(...): void
+  }
+  enum TipoVertice {
+    SUBESTACAO
+    POSTE
+    CASA
+  }
+  class VerticeVis {
+    +nome: String
+    +posicao: GeoPosition
+    +tipo: TipoVertice
+  }
+  class ConexaoVis {
+    -origem: String
+    -destino: String
+    -peso: int
+  }
+
+  class GerenciadorTestes {
+    -interfacePrincipal: VisualizadorRede
+    -grafo: Grafo<String>
+    -pintor: PintorConexoes
+    +iniciarTesteAutomatico(): void
+    +executarTestePersonalizado(): void
+    +registrarFalhaManualNoMapa(...): void
+  }
+  class ModeloTesteAutomatico <<utility>> {
+    +{static} construirRedeBase(grafo, pintor, interface): void
+  }
+}
+
+' Herança e composição da estrutura do domínio
+Nodo <|-- Vertice
+Grafo *-- "0..*" Vertice : armazena
+Grafo *-- "0..*" Aresta : armazena
+Aresta --> "1" Vertice : u
+Aresta --> "1" Vertice : v
+
+' Grafo atua como fachada para os algoritmos
+Grafo ..> BFS : delega
+Grafo ..> DFS : delega
+Grafo ..> AreasAfetadas : delega
+Grafo ..> CaminhoAlternativo : delega
+Grafo ..> FluxoMaximo : delega
+Grafo ..> Pontes : delega
+Grafo ..> PontosPrioritarios : delega
+Grafo ..> AGM : delega
+AGM ..> ConjuntoDisjunto : usa
+PontosPrioritarios ..> Pontes : usa
+
+' Cada algoritmo lê a topologia do grafo
+BFS ..> Vertice
+BFS ..> Aresta
+DFS ..> Vertice
+DFS ..> Aresta
+AreasAfetadas ..> Vertice
+AreasAfetadas ..> Aresta
+CaminhoAlternativo ..> Vertice
+CaminhoAlternativo ..> Aresta
+FluxoMaximo ..> Vertice
+FluxoMaximo ..> Aresta
+Pontes ..> Vertice
+Pontes ..> Aresta
+PontosPrioritarios ..> Vertice
+PontosPrioritarios ..> Aresta
+
+' Interface e apoio aos testes
+App ..> VisualizadorRede : cria
+VisualizadorRede *-- Grafo
+VisualizadorRede *-- PintorConexoes
+VisualizadorRede *-- Modo
+VisualizadorRede ..> TipoVertice
+VisualizadorRede ..> GerenciadorTestes : cria
+PintorConexoes *-- "0..*" VerticeVis
+PintorConexoes *-- "0..*" ConexaoVis
+VerticeVis --> TipoVertice
+GerenciadorTestes --> VisualizadorRede
+GerenciadorTestes --> Grafo
+GerenciadorTestes --> PintorConexoes
+GerenciadorTestes ..> ModeloTesteAutomatico : aciona
+ModeloTesteAutomatico ..> VisualizadorRede
+ModeloTesteAutomatico ..> Grafo
+ModeloTesteAutomatico ..> PintorConexoes
+
+note bottom of Grafo
+  Grafo não implementa os algoritmos diretamente:
+  ele os instancia e delega a execução.
+end note
+
+@enduml
