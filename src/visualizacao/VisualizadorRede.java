@@ -55,6 +55,11 @@ public class VisualizadorRede extends JFrame {
     private Timer timerAlertaCritico;
     private boolean piscaAlertaCriticoAceso = false;
     private Runnable acaoAlertaCritico;
+    private boolean alertaAtualEhDeSubestacao = false;
+
+    private static final Color COR_APAGADA = new Color(255, 220, 190);
+    private static final Color COR_ACESA_PONTO_CRITICO = new Color(255, 90, 0);
+    private static final Color COR_ACESA_SUBESTACAO = new Color(180, 0, 0);
 
     public VisualizadorRede() {
         super("Simulador de Distribuição de Rede");
@@ -401,13 +406,33 @@ public class VisualizadorRede extends JFrame {
 
         timerAlertaCritico = new Timer(500, e -> {
             piscaAlertaCriticoAceso = !piscaAlertaCriticoAceso;
-            labelAlertaCritico.setBackground(piscaAlertaCriticoAceso ? new Color(255, 90, 0) : new Color(255, 220, 190));
+            Color corAcesa = alertaAtualEhDeSubestacao ? COR_ACESA_SUBESTACAO : COR_ACESA_PONTO_CRITICO;
+            labelAlertaCritico.setBackground(piscaAlertaCriticoAceso ? corAcesa : COR_APAGADA);
         });
     }
 
     /** Acende o ícone piscante lateral avisando uma falha crítica; ao clicar, executa a ação informada. */
     public void ativarAlertaCritico(Runnable aoClicar) {
         this.acaoAlertaCritico = aoClicar;
+        this.alertaAtualEhDeSubestacao = false;
+        labelAlertaCritico.setText("⚠");
+        labelAlertaCritico.setToolTipText("Falha crítica na rede! Clique para ver o relatório.");
+        labelAlertaCritico.setVisible(true);
+        if (!timerAlertaCritico.isRunning()) {
+            timerAlertaCritico.start();
+        }
+    }
+
+    /**
+     * Acende o ícone piscante lateral avisando uma falha de SUBESTAÇÃO - um alerta mais grave e
+     * visualmente distinto do de um ponto crítico comum, já que derruba a fonte de energia de
+     * uma região inteira, não apenas um trecho da rede.
+     */
+    public void ativarAlertaDeSubestacao(Runnable aoClicar) {
+        this.acaoAlertaCritico = aoClicar;
+        this.alertaAtualEhDeSubestacao = true;
+        labelAlertaCritico.setText("⛔");
+        labelAlertaCritico.setToolTipText("Falha em subestação! Uma região inteira pode ter ficado sem energia. Clique para ver o relatório.");
         labelAlertaCritico.setVisible(true);
         if (!timerAlertaCritico.isRunning()) {
             timerAlertaCritico.start();
@@ -418,7 +443,7 @@ public class VisualizadorRede extends JFrame {
     public void desativarAlertaCritico() {
         timerAlertaCritico.stop();
         labelAlertaCritico.setVisible(false);
-        labelAlertaCritico.setBackground(new Color(255, 220, 190));
+        labelAlertaCritico.setBackground(COR_APAGADA);
     }
 
     private void limparSelecao(Modo novoModo) {
@@ -598,8 +623,14 @@ public class VisualizadorRede extends JFrame {
 
         // Recalcula automaticamente, a cada mudança na rede, quais postes ATIVOS são
         // pontos de articulação (se caírem agora, isolam trechos da rede). Não depende
-        // de nenhum botão: fica sempre visível e atualizado no mapa.
-        pintorConexoes.setPontosCriticos(new HashSet<>(grafoRede.encontrarPontosArticulacao()));
+        // de nenhum botão: fica sempre visível e atualizado no mapa. Subestações ficam de
+        // fora: sua queda já tem destaque e alerta próprios, mais graves que um ponto crítico comum.
+        Set<String> pontosCriticos = new HashSet<>(grafoRede.encontrarPontosArticulacao());
+        pontosCriticos.removeIf(id -> {
+            PintorConexoes.VerticeVis v = pintorConexoes.getVertices().get(id);
+            return v != null && v.tipo == TipoVertice.SUBESTACAO;
+        });
+        pintorConexoes.setPontosCriticos(pontosCriticos);
 
         mapViewer.repaint();
     }

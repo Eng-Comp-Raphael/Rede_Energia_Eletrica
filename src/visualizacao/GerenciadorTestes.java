@@ -3,6 +3,7 @@ package visualizacao;
 import estruturaGrafo.Grafo;
 import estruturaGrafo.Aresta;
 import visualizacao.PintorConexoes.TipoVertice;
+import org.jxmapviewer.viewer.GeoPosition;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -25,6 +26,9 @@ import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class GerenciadorTestes {
 
@@ -339,8 +343,12 @@ public class GerenciadorTestes {
         });
 
         btnPrioridade.addActionListener(e -> {
-            logPersonalizado.append("\n\n[PONTOS PRIORITÁRIOS PARA MANUTENÇÃO]:\n" + gerarSecoesImpacto());
+            logPersonalizado.append("\n\n[PONTOS PRIORITÁRIOS PARA MANUTENÇÃO]: gerando... (consultando localização)");
             logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
+            gerarEmSegundoPlano(this::gerarSecoesImpacto, texto -> {
+                logPersonalizado.append("\n\n[PONTOS PRIORITÁRIOS PARA MANUTENÇÃO]:\n" + texto);
+                logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
+            });
         });
     }
 
@@ -398,10 +406,13 @@ public class GerenciadorTestes {
             String acao = religado ? "RELIGADO" : "DERRUBADO";
             logPersonalizado.append("\n\n----------------------------------");
             logPersonalizado.append("\n[MAPA] Componente '" + vertice + "' foi " + acao + "!");
-            if (!religado) {
-                logPersonalizado.append("\n\n" + gerarRelatorioDeFalha());
-            }
             logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
+            if (!religado) {
+                gerarEmSegundoPlano(this::gerarRelatorioDeFalha, texto -> {
+                    logPersonalizado.append("\n\n" + texto);
+                    logPersonalizado.setCaretPosition(logPersonalizado.getDocument().getLength());
+                });
+            }
         }
 
         if (!religado) {
@@ -413,12 +424,25 @@ public class GerenciadorTestes {
     // 4. ALERTAS DE FALHA (SOM + AVISO DE FALHA CRÍTICA)
     // ==========================================
 
-    /** Só toca alerta sonoro (e acende o ícone lateral) quando a falha é crítica. */
+    /**
+     * Toca alerta sonoro (e acende o ícone lateral) quando a falha é crítica. Uma subestação em
+     * falha sempre dispara o alerta - e um alerta diferente do de ponto crítico comum, já que ela
+     * é a fonte de energia de uma região inteira - mesmo quando a rede tem redundância suficiente
+     * para não gerar efeito cascata.
+     */
     private void notificarFalha(String vertice) {
-        if (ehFalhaCritica(vertice)) {
+        if (ehSubestacao(vertice)) {
+            Toolkit.getDefaultToolkit().beep();
+            sinalizarFalhaDeSubestacao();
+        } else if (ehFalhaCritica(vertice)) {
             Toolkit.getDefaultToolkit().beep();
             sinalizarFalhaCritica();
         }
+    }
+
+    private boolean ehSubestacao(String vertice) {
+        PintorConexoes.VerticeVis v = pintor.getVertices().get(vertice);
+        return v != null && v.tipo == TipoVertice.SUBESTACAO;
     }
 
     /**
@@ -449,6 +473,15 @@ public class GerenciadorTestes {
         }
     }
 
+    /** Mesma ideia de {@link #sinalizarFalhaCritica()}, mas com o alerta próprio de subestação. */
+    private void sinalizarFalhaDeSubestacao() {
+        if (janelaRelatorio != null && janelaRelatorio.isVisible()) {
+            atualizarConteudoRelatorio();
+        } else {
+            interfacePrincipal.ativarAlertaDeSubestacao(this::abrirRelatorioCompleto);
+        }
+    }
+
     // ==========================================
     // 5. RELATÓRIOS (IMPACTO DE FALHA E RELATÓRIO COMPLETO)
     // ==========================================
@@ -475,10 +508,10 @@ public class GerenciadorTestes {
             return "Nenhum poste está em falha no momento.\n";
         }
 
-        Map<String, String> regiaoDoPoste = calcularRegiaoPorSubestacaoMaisProxima();
+        Map<String, String> regiaoDoPoste = calcularLocalizacaoReal(postesEmFalha);
         Map<String, List<String>> falhasPorRegiao = new TreeMap<>();
         for (String id : postesEmFalha) {
-            String regiao = regiaoDoPoste.getOrDefault(id, "Sem região definida");
+            String regiao = regiaoDoPoste.getOrDefault(id, "Localização não identificada");
             falhasPorRegiao.computeIfAbsent(regiao, r -> new ArrayList<>()).add(id);
         }
         for (List<String> postesDaRegiao : falhasPorRegiao.values()) {
@@ -515,8 +548,14 @@ public class GerenciadorTestes {
                 }
             }
 
+            boolean subestacaoEmFalha = pintor.getVertices().get(id).tipo == TipoVertice.SUBESTACAO;
             int quedasJunto = grauDaFalha.get(id);
-            relatorio.append("\n   ⚡ ").append(id).append('\n');
+            if (subestacaoEmFalha) {
+                relatorio.append("\n   ⛔ SUBESTAÇÃO EM FALHA: ").append(id).append('\n');
+                relatorio.append("      Atenção: fonte de energia de toda uma região caiu, não um ponto crítico comum.\n");
+            } else {
+                relatorio.append("\n   ⚡ ").append(id).append('\n');
+            }
             relatorio.append("      Grau da falha: ").append(classificarGrauDaFalha(quedasJunto))
                     .append(" (").append(quedasJunto)
                     .append(quedasJunto == 1 ? " poste cai junto)\n" : " postes caem juntos)\n");
@@ -639,61 +678,20 @@ public class GerenciadorTestes {
     }
 
     /**
-     * Agrupa cada poste da rede pela subestação mais próxima (menor número de saltos na
-     * topologia, ignorando o estado ativo/inativo). É essa subestação que representa a
-     * "região/bairro" do poste no relatório - o mesmo agrupamento natural de uma rede de
-     * distribuição real, onde cada bairro é alimentado por uma subestação específica.
+     * Descobre a cidade e o bairro reais de cada elemento em falha, a partir da lat/long
+     * já salva em cada vértice, via geocodificação reversa (Nominatim/OpenStreetMap). É essa
+     * localização real - não mais a subestação mais próxima - que aparece como "região" do
+     * elemento no relatório.
      */
-    private Map<String, String> calcularRegiaoPorSubestacaoMaisProxima() {
-        Map<String, List<String>> adjacencia = new HashMap<>();
-        for (String id : pintor.getVertices().keySet()) {
-            adjacencia.put(id, new ArrayList<>());
+    private Map<String, String> calcularLocalizacaoReal(List<String> postesEmFalha) {
+        Map<String, String> localizacaoDoPoste = new HashMap<>();
+        for (String id : postesEmFalha) {
+            GeoPosition posicao = pintor.getVertices().get(id).posicao;
+            GeocodificadorReverso.Endereco endereco = GeocodificadorReverso.buscar(
+                    posicao.getLatitude(), posicao.getLongitude());
+            localizacaoDoPoste.put(id, endereco.descricao());
         }
-        for (Aresta<String> cabo : grafo.getArestas()) {
-            String origem = cabo.getU().getNome();
-            String destino = cabo.getV().getNome();
-            adjacencia.get(origem).add(destino);
-            adjacencia.get(destino).add(origem);
-        }
-
-        List<String> subestacoes = new ArrayList<>();
-        for (Map.Entry<String, PintorConexoes.VerticeVis> entry : pintor.getVertices().entrySet()) {
-            if (entry.getValue().tipo == TipoVertice.SUBESTACAO) {
-                subestacoes.add(entry.getKey());
-            }
-        }
-        subestacoes.sort(String::compareTo);
-
-        Map<String, String> regiaoDoPoste = new HashMap<>();
-        Map<String, Integer> menorDistancia = new HashMap<>();
-
-        for (String subestacao : subestacoes) {
-            Map<String, Integer> distancias = new HashMap<>();
-            Queue<String> fila = new LinkedList<>();
-            distancias.put(subestacao, 0);
-            fila.add(subestacao);
-
-            while (!fila.isEmpty()) {
-                String atual = fila.poll();
-                for (String vizinho : adjacencia.get(atual)) {
-                    if (!distancias.containsKey(vizinho)) {
-                        distancias.put(vizinho, distancias.get(atual) + 1);
-                        fila.add(vizinho);
-                    }
-                }
-            }
-
-            for (Map.Entry<String, Integer> entrada : distancias.entrySet()) {
-                String poste = entrada.getKey();
-                int distancia = entrada.getValue();
-                if (!menorDistancia.containsKey(poste) || distancia < menorDistancia.get(poste)) {
-                    menorDistancia.put(poste, distancia);
-                    regiaoDoPoste.put(poste, subestacao);
-                }
-            }
-        }
-
-        return regiaoDoPoste;
+        return localizacaoDoPoste;
     }
 
     /** Relatório completo: resumo geral da rede + impacto atual + prioridades gerais de manutenção. */
@@ -779,8 +777,34 @@ public class GerenciadorTestes {
     }
 
     private void atualizarConteudoRelatorio() {
-        areaRelatorio.setText(gerarRelatorioCompleto());
-        areaRelatorio.setCaretPosition(0);
+        areaRelatorio.setText("Gerando relatório... (consultando localização das falhas)");
+        gerarEmSegundoPlano(this::gerarRelatorioCompleto, texto -> {
+            areaRelatorio.setText(texto);
+            areaRelatorio.setCaretPosition(0);
+        });
+    }
+
+    /**
+     * Roda a geração de um relatório (que agora consulta um serviço externo de localização
+     * poste a poste) fora da thread de UI, para a interface não travar enquanto aguarda a
+     * resposta da rede. O resultado é entregue de volta na EDT, através de {@code aoConcluir}.
+     */
+    private void gerarEmSegundoPlano(Supplier<String> gerador, Consumer<String> aoConcluir) {
+        new SwingWorker<String, Void>() {
+            @Override
+            protected String doInBackground() {
+                return gerador.get();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    aoConcluir.accept(get());
+                } catch (InterruptedException | ExecutionException ex) {
+                    aoConcluir.accept("Erro ao gerar relatório: " + ex.getMessage());
+                }
+            }
+        }.execute();
     }
 
     private void salvarRelatorioEmArquivo(String conteudo) {

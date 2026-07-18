@@ -1,0 +1,230 @@
+% Apresentação estimada: 9 min 50 s (11 slides de conteúdo + capa).
+% Compile com: pdflatex apresentacao.tex
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+
+\title{Simulador de Rede de Energia Elétrica}
+\subtitle{Aplicação de grafos, árvores e algoritmos de redes}
+\author{Raphael Batista e equipe}
+\institute{Estrutura de Dados}
+\date{2026}
+
+\begin{document}
+
+% Tempo: 0:20
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% Tempo: 0:50
+\begin{frame}{Problema e proposta}
+  \begin{block}{Problema}
+    Uma rede elétrica precisa representar conexões, medir distâncias/capacidades
+    e continuar sendo analisável quando postes ou cabos falham.
+  \end{block}
+  \begin{block}{Solução}
+    Um simulador desktop em Java que permite criar uma rede sobre um mapa,
+    visualizar seu estado e executar algoritmos clássicos de grafos.
+  \end{block}
+  \vspace{0.3cm}
+  \begin{itemize}
+    \item Postes/subestações são vértices; cabos são arestas não direcionadas.
+    \item O peso $\lambda$ representa distância do cabo e também capacidade no fluxo máximo.
+    \item Falhas mudam o estado da rede e as análises desconsideram seus elementos inativos.
+  \end{itemize}
+\end{frame}
+
+% Tempo: 0:50
+\begin{frame}{Visão geral da arquitetura}
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.0cm, every node/.style={align=center,font=\small},
+  caixa/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, fill=blue!8},
+  seta/.style={-{Latex[length=2mm]}, thick}]
+  \node[caixa, fill=orange!15] (app) {\texttt{App}\\inicia a janela};
+  \node[caixa, right=of app] (ui) {\texttt{VisualizadorRede}\\interface Swing + mapa};
+  \node[caixa, below=of ui] (grafo) {\texttt{Grafo<TIPO>}\\modelo e fachada};
+  \node[caixa, left=of grafo] (estrutura) {\texttt{Vertice}, \texttt{Nodo},\\\texttt{Aresta}, Union-Find};
+  \node[caixa, right=of grafo] (alg) {\texttt{algoritmos}\\BFS, DFS, AGM, ...};
+  \node[caixa, below=of grafo] (pintor) {\texttt{PintorConexoes}\\desenho e estados visuais};
+  \draw[seta] (app) -- (ui);
+  \draw[seta] (ui) -- (grafo);
+  \draw[seta] (ui) -- (pintor);
+  \draw[seta] (grafo) -- (estrutura);
+  \draw[seta] (grafo) -- (alg);
+  \draw[seta] (alg) -- (pintor);
+\end{tikzpicture}
+
+\vspace{0.35cm}
+\small A interface orquestra; o \texttt{Grafo} concentra os dados e delega os cálculos às classes especializadas.
+\end{frame}
+
+% Tempo: 1:10
+\begin{frame}{Modelagem das estruturas de dados}
+\begin{columns}[T]
+\column{0.53\textwidth}
+  \begin{itemize}
+    \item \texttt{Grafo<TIPO>}: \texttt{HashMap} de vértices e \texttt{ArrayList} de arestas.
+    \item \texttt{Aresta}: extremos $u,v$, peso \texttt{lambda} e estado \texttt{ativo}.
+    \item \texttt{Nodo}: nome, filhos esquerdo/direito e estado ativo.
+    \item \texttt{Vertice} herda de \texttt{Nodo}: cada poste é a raiz de uma árvore binária de casas.
+    \item O primeiro vértice é guardado como \texttt{fontePrincipal}; o último apoia a autoconexão.
+  \end{itemize}
+\column{0.47\textwidth}
+  \centering
+  \begin{tikzpicture}[every node/.style={font=\scriptsize,align=center}]
+    \node[draw, rounded corners, fill=yellow!18] (p) {Poste P\\(\texttt{Vertice})};
+    \node[draw, rounded corners, below left=0.45cm and 0.4cm of p] (c1) {Casa A\\(\texttt{Nodo})};
+    \node[draw, rounded corners, below right=0.45cm and 0.4cm of p] (c2) {Casa C};
+    \node[draw, rounded corners, below left=0.45cm and 0.1cm of c2] (c3) {Casa B};
+    \draw (p)--(c1); \draw (p)--(c2); \draw (c2)--(c3);
+  \end{tikzpicture}
+
+  \vspace{0.3cm}
+  \small Uma casa é atendida somente se ela \emph{e} seu poste estão ativos.
+\end{columns}
+\end{frame}
+
+% Tempo: 1:00
+\begin{frame}{Operações e regras de negócio do \texttt{Grafo}}
+\begin{itemize}
+  \item \texttt{addVertice} cria somente o poste; \texttt{addVerticeAutoConectado} pode ligá-lo ao anterior.
+  \item \texttt{addAresta} valida os dois extremos e bloqueia cabos duplicados, inclusive na ordem inversa.
+  \item \texttt{removerVertice} remove o poste e todas as suas arestas incidentes.
+  \item \texttt{setPosteAtivo}, \texttt{romperAresta} e seus reparos simulam curto-circuitos e rompimentos.
+  \item \texttt{Grafo} é uma fachada: métodos como \texttt{bfs}, \texttt{AGM} e \texttt{fluxoMaximo} delegam para o pacote \texttt{algoritmos}.
+\end{itemize}
+\begin{alertblock}{Decisão importante}
+  Os algoritmos constroem suas estruturas auxiliares usando apenas postes e cabos ativos. Assim, uma falha altera o resultado sem destruir os dados originais.
+\end{alertblock}
+\end{frame}
+
+% Tempo: 1:00
+\begin{frame}{Interface, mapa e persistência}
+\begin{columns}[T]
+\column{0.56\textwidth}
+  \begin{itemize}
+    \item \texttt{VisualizadorRede} é a janela Swing e controla os modos: navegar, criar, ligar, remover e alternar falha.
+    \item A distância geográfica entre dois cliques usa a fórmula de Haversine; o resultado vira o peso do cabo.
+    \item \texttt{PintorConexoes} desenha vértices, arestas, animação e destaques dos algoritmos no \texttt{JXMapViewer}.
+    \item O estado energético é recalculado por BFS a partir das subestações ativas.
+  \end{itemize}
+\column{0.44\textwidth}
+  \begin{block}{Salvar/carregar}
+    Arquivo texto com duas seções:
+    \begin{center}
+      \texttt{[VERTICES]}\\
+      \texttt{nome;latitude;longitude;tipo}\\[0.15cm]
+      \texttt{[ARESTAS]}\\
+      \texttt{origem;destino;peso}
+    \end{center}
+  \end{block}
+\end{columns}
+\end{frame}
+
+% Tempo: 1:10
+\begin{frame}{BFS, DFS e áreas afetadas}
+\begin{tabular}{@{}p{0.22\textwidth}p{0.33\textwidth}p{0.37\textwidth}@{}}
+\toprule
+Algoritmo & Estratégia & Uso no simulador \\
+\midrule
+BFS & Fila; visita por camadas. $O(V+E)$. & Ordem de alcance e motor de distribuição de energia. \\
+DFS & Recursão; explora um caminho antes de voltar. $O(V+E)$. & Percurso detalhado da topologia. \\
+Áreas afetadas & BFS a partir da fonte, com elementos ativos. $O(V+E)$. & Lista postes inativos ou que perderam caminho até a fonte. \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.35cm}
+\begin{block}{Exemplo de falha}
+  Se um poste intermediário cai, ele não entra na lista de adjacência. O BFS deixa de alcançar a região após ele, que é marcada como sem energia.
+\end{block}
+\end{frame}
+
+% Tempo: 1:20
+\begin{frame}{Confiabilidade: pontes, rota alternativa e prioridades}
+\begin{itemize}
+  \item \textbf{Pontes (Tarjan):} DFS calcula \texttt{disc} e \texttt{low}. Uma aresta $(u,v)$ é crítica quando $low[v] > disc[u]$; sua remoção desconecta a rede.
+  \item \textbf{Caminho alternativo:} Dijkstra simples, sem fila de prioridade, encontra o caminho ativo de menor soma de pesos. Complexidade aproximada $O(V^2+E)$.
+  \item \textbf{Pontos prioritários:} combina pontes, postes de menor grau e cabos mais longos para orientar manutenção preventiva.
+\end{itemize}
+\begin{alertblock}{Valor prático}
+  Essas análises mostram onde uma falha é mais perigosa e se ainda existe uma rota viável para restabelecer o atendimento.
+\end{alertblock}
+\end{frame}
+
+% Tempo: 1:15
+\begin{frame}{AGM: reduzir o custo de implantação}
+\begin{columns}[T]
+\column{0.55\textwidth}
+  \texttt{AGM.java} implementa Kruskal:
+  \begin{enumerate}
+    \item ordena as arestas por $\lambda$ crescente;
+    \item cria um conjunto disjunto para cada vértice;
+    \item aceita uma aresta apenas se seus extremos pertencem a conjuntos diferentes;
+    \item para após selecionar $V-1$ arestas.
+  \end{enumerate}
+  \vspace{0.15cm}
+  \texttt{ConjuntoDisjunto} usa compressão de caminho e união por rank para detectar ciclos eficientemente.
+\column{0.45\textwidth}
+  \begin{block}{Resultado}
+    Uma árvore geradora mínima (ou floresta, se o grafo não for conexo) que conecta a rede com o menor peso total.
+  \end{block}
+  \begin{block}{Complexidade}
+    $O(E\log E)$, dominada pela ordenação das arestas.
+  \end{block}
+\end{columns}
+\end{frame}
+
+% Tempo: 1:10
+\begin{frame}{Fluxo máximo: capacidade de distribuição}
+\begin{itemize}
+  \item \texttt{FluxoMaximo} usa Edmonds--Karp: Ford--Fulkerson com BFS para encontrar caminhos aumentantes.
+  \item Como a rede é não direcionada, cada cabo vira duas capacidades residuais, uma em cada sentido.
+  \item Em cada iteração, encontra-se o gargalo do caminho, atualizam-se as capacidades residuais e soma-se ao fluxo total.
+  \item O valor de \texttt{lambda} é interpretado aqui como capacidade de distribuição; postes/cabos inativos não participam.
+\end{itemize}
+\begin{block}{Resposta à pergunta do usuário}
+  ``Qual a maior capacidade de energia que pode sair de uma origem e chegar a um destino nas condições atuais da rede?''
+\end{block}
+\end{frame}
+
+% Tempo: 0:50
+\begin{frame}{Testes e demonstração sugerida}
+\begin{enumerate}
+  \item Carregar ou criar uma rede com uma subestação, postes e caminhos redundantes.
+  \item Mostrar o BFS de distribuição: nós alcançados ficam energizados.
+  \item Alternar a falha de um poste e observar áreas isoladas no mapa.
+  \item Executar Pontes para destacar cabos críticos.
+  \item Executar AGM para exibir a infraestrutura de menor custo.
+  \item Opcional: comparar fluxo máximo antes e depois de uma falha.
+\end{enumerate}
+\vspace{0.2cm}
+\small \texttt{ModeloTesteAutomatico} monta uma rede-base e \texttt{GerenciadorTestes} conduz cenários automáticos ou personalizados.
+\end{frame}
+
+% Tempo: 0:45
+\begin{frame}{Conclusão}
+\begin{itemize}
+  \item O projeto aplica estruturas de dados de forma integrada: grafo ponderado, árvores binárias, mapas, listas, filas, conjuntos e Union-Find.
+  \item A separação entre modelo, algoritmos e visualização facilita extensão e teste.
+  \item O simulador não apenas desenha uma rede: mede custo, alcance, capacidade, vulnerabilidade e impacto de falhas.
+\end{itemize}
+\vfill
+\begin{center}
+  \Large Obrigado!\\[0.2cm]
+  \normalsize Perguntas?
+\end{center}
+\end{frame}
+
+\end{document}

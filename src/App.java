@@ -1,6 +1,6 @@
 /**
  * @file App.java
- * @authors Raphael Batista ...
+ * @authors Raphael Batista Dos Santos
  * @date 2026
  * @brief Main
  */
